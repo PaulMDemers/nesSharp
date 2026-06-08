@@ -13,6 +13,8 @@ public sealed class NesMachine
         PpuBus = new PpuBus(cartridge);
         CpuBus = new CpuBus(cartridge, PpuBus);
         Cpu = new Cpu6502(CpuBus);
+        CpuBus.SetCpuCycleCallback(ClockOneCpuCycle);
+        PpuBus.NmiSuppressed += Cpu.ClearPendingNmi;
     }
 
     public Cartridge.Cartridge Cartridge { get; }
@@ -37,12 +39,24 @@ public sealed class NesMachine
     public int StepInstruction()
     {
         var cpuCycles = Cpu.Step();
-        PpuBus.Clock(cpuCycles * 3);
+        var remainingCycles = cpuCycles - CpuBus.CpuAccessCycles;
+        if (remainingCycles > 0)
+        {
+            for (var i = 0; i < remainingCycles; i++)
+            {
+                ClockOneCpuCycle();
+            }
+        }
+
+        return cpuCycles;
+    }
+
+    private void ClockOneCpuCycle()
+    {
+        PpuBus.Clock(3);
         if (PpuBus.PollNmi())
         {
             Cpu.RequestNmi();
         }
-
-        return cpuCycles;
     }
 }

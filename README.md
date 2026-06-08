@@ -26,11 +26,13 @@ dotnet run --project src\NesSharp.Cli -- test-rom test-roms\nes-test-roms\ppu_vb
 - Passes all 16 NROM `instr_test-v5/rom_singles` CPU instruction ROMs.
 - Tracks basic NTSC PPU dot/scanline/frame timing.
 - Implements PPU vblank set/clear behavior, `$2002` read side effects, basic NMI control, and odd-frame clock skip.
-- Passes `ppu_vbl_nmi` ROMs `01-vbl_basics`, `03-vbl_clear_time`, `04-nmi_control`, and `09-even_odd_frames`.
+- Advances PPU timing during CPU bus accesses, with raw bus reads preserved for tracing/debug inspection.
+- Models the `$2002` vblank-set suppression window and near-vblank NMI cancellation.
+- Passes `ppu_vbl_nmi` ROMs `01-vbl_basics`, `02-vbl_set_time`, `03-vbl_clear_time`, `04-nmi_control`, `06-suppression`, and `09-even_odd_frames`.
 - Includes focused xUnit coverage using synthetic ROMs and the downloaded `nestest.nes`.
 
 ## Known Next Accuracy Work
 
-The remaining `ppu_vbl_nmi` timing ROMs need CPU/PPU synchronization at individual CPU memory-access boundaries, not only after each instruction. That is the next accuracy step before the stricter vblank/NMI suppression and one-dot NMI timing tests can pass.
+The remaining `ppu_vbl_nmi` timing ROMs need tighter CPU/PPU phase modeling around NMI recognition, pre-render clear timing, and rendering-enable odd-frame skip timing.
 
 The staged implementation plan is in `docs/implementation-plan.md`.

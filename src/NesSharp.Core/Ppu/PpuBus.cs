@@ -15,7 +15,9 @@ public sealed class PpuBus
     private readonly byte[] registers = new byte[8];
     private bool nmiPending;
     private int nmiPollDelay;
+    private bool suppressVblankSet;
     private bool writeToggle;
+    private ulong vblankSetTotalDots;
 
     public PpuBus(Cartridge.Cartridge cartridge)
     {
@@ -28,6 +30,10 @@ public sealed class PpuBus
 
     public ulong Frame { get; private set; }
 
+    public ulong TotalDots { get; private set; }
+
+    public event Action? NmiSuppressed;
+
     public byte ReadRegister(ushort address)
     {
         var register = address & 0x0007;
@@ -36,6 +42,7 @@ public sealed class PpuBus
             return registers[register];
         }
 
+        ApplyStatusReadVblankSuppression();
         var status = registers[2];
         registers[2] = (byte)(registers[2] & ~VblankFlag);
         writeToggle = false;
@@ -78,9 +85,12 @@ public sealed class PpuBus
         Dot = 0;
         Scanline = 0;
         Frame = 0;
+        TotalDots = 0;
         nmiPending = false;
         nmiPollDelay = 0;
+        suppressVblankSet = false;
         writeToggle = false;
+        vblankSetTotalDots = 0;
     }
 
     public void Clock(int ppuCycles)
@@ -89,12 +99,14 @@ public sealed class PpuBus
         {
             if (Scanline == 261 && Dot == 339 && IsOddFrame && IsRenderingEnabled)
             {
+                TotalDots++;
                 Dot = 0;
                 Scanline = 0;
                 Frame++;
                 continue;
             }
 
+            TotalDots++;
             Dot++;
             if (Dot >= DotsPerScanline)
             {
@@ -109,7 +121,14 @@ public sealed class PpuBus
 
             if (Scanline == 241 && Dot == 1)
             {
-                SetVblank();
+                if (suppressVblankSet)
+                {
+                    suppressVblankSet = false;
+                }
+                else
+                {
+                    SetVblank();
+                }
             }
             else if (Scanline == 261 && Dot == 1)
             {
@@ -150,6 +169,7 @@ public sealed class PpuBus
     private void SetVblank()
     {
         registers[2] |= VblankFlag;
+        vblankSetTotalDots = TotalDots;
         if (IsNmiEnabled)
         {
             nmiPending = true;
@@ -161,5 +181,25 @@ public sealed class PpuBus
         registers[2] = (byte)(registers[2] & ~(VblankFlag | SpriteZeroHitFlag | SpriteOverflowFlag));
         nmiPending = false;
         nmiPollDelay = 0;
+        suppressVblankSet = false;
+    }
+
+    private void ApplyStatusReadVblankSuppression()
+    {
+        if (Scanline == 241 && Dot == 0)
+        {
+            suppressVblankSet = true;
+            nmiPending = false;
+            nmiPollDelay = 0;
+            NmiSuppressed?.Invoke();
+            return;
+        }
+
+        if (IsVblankSet && TotalDots >= vblankSetTotalDots && TotalDots - vblankSetTotalDots <= 1)
+        {
+            nmiPending = false;
+            nmiPollDelay = 0;
+            NmiSuppressed?.Invoke();
+        }
     }
 }

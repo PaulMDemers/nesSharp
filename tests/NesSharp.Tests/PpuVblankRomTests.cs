@@ -8,8 +8,10 @@ public sealed class PpuVblankRomTests
     public static TheoryData<string> PassingPpuVblankNmiRoms => new()
     {
         "01-vbl_basics.nes",
+        "02-vbl_set_time.nes",
         "03-vbl_clear_time.nes",
         "04-nmi_control.nes",
+        "06-suppression.nes",
         "09-even_odd_frames.nes"
     };
 
@@ -43,4 +45,3 @@ public sealed class PpuVblankRomTests
         throw new DirectoryNotFoundException("Could not find workspace root containing ppu_vbl_nmi/rom_singles.");
     }
 }
-

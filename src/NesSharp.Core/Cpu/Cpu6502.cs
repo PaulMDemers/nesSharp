@@ -43,13 +43,18 @@ public sealed class Cpu6502
         Y = 0;
         StackPointer = 0xFD;
         Status = UnusedFlag | InterruptDisableFlag;
-        ProgramCounter = bus.ReadWord(0xFFFC);
+        ProgramCounter = bus.ReadWordRaw(0xFFFC);
         Cycles = 7;
     }
 
     public void RequestNmi()
     {
         nmiRequested = true;
+    }
+
+    public void ClearPendingNmi()
+    {
+        nmiRequested = false;
     }
 
     public void SetProgramCounter(ushort programCounter)
@@ -64,12 +69,12 @@ public sealed class Cpu6502
 
     public CpuTraceState CaptureTraceState()
     {
-        var opcode = bus.Read(ProgramCounter);
+        var opcode = bus.ReadRaw(ProgramCounter);
         var length = GetInstructionLength(opcode);
         Span<byte> bytes = stackalloc byte[3];
         for (var i = 0; i < length; i++)
         {
-            bytes[i] = bus.Read((ushort)(ProgramCounter + i));
+            bytes[i] = bus.ReadRaw((ushort)(ProgramCounter + i));
         }
 
         return new CpuTraceState(
@@ -88,6 +93,9 @@ public sealed class Cpu6502
 
     public int Step()
     {
+        bus.BeginCpuInstruction();
+        try
+        {
         if (nmiRequested)
         {
             nmiRequested = false;
@@ -101,6 +109,11 @@ public sealed class Cpu6502
         Cycles += (uint)cycles;
         Status |= UnusedFlag;
         return cycles;
+        }
+        finally
+        {
+            bus.EndCpuInstruction();
+        }
     }
 
     private int Execute(byte opcode)

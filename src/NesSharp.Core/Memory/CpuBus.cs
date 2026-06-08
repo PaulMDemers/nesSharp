@@ -7,6 +7,8 @@ public sealed class CpuBus
 {
     private readonly byte[] ram = new byte[2 * 1024];
     private readonly PpuBus ppuBus;
+    private Action? cpuCycleElapsed;
+    private bool trackCpuAccessCycles;
 
     public CpuBus(Cartridge.Cartridge cartridge)
         : this(cartridge, new PpuBus(cartridge))
@@ -21,7 +23,31 @@ public sealed class CpuBus
 
     public Cartridge.Cartridge Cartridge { get; }
 
+    public int CpuAccessCycles { get; private set; }
+
+    public void SetCpuCycleCallback(Action callback)
+    {
+        cpuCycleElapsed = callback;
+    }
+
+    public void BeginCpuInstruction()
+    {
+        CpuAccessCycles = 0;
+        trackCpuAccessCycles = true;
+    }
+
+    public void EndCpuInstruction()
+    {
+        trackCpuAccessCycles = false;
+    }
+
     public byte Read(ushort address)
+    {
+        ClockCpuAccess();
+        return ReadRaw(address);
+    }
+
+    public byte ReadRaw(ushort address)
     {
         return address switch
         {
@@ -33,6 +59,12 @@ public sealed class CpuBus
     }
 
     public void Write(ushort address, byte value)
+    {
+        ClockCpuAccess();
+        WriteRaw(address, value);
+    }
+
+    public void WriteRaw(ushort address, byte value)
     {
         switch (address)
         {
@@ -54,5 +86,22 @@ public sealed class CpuBus
         var high = Read((ushort)(address + 1));
         return (ushort)(low | (high << 8));
     }
-}
 
+    public ushort ReadWordRaw(ushort address)
+    {
+        var low = ReadRaw(address);
+        var high = ReadRaw((ushort)(address + 1));
+        return (ushort)(low | (high << 8));
+    }
+
+    private void ClockCpuAccess()
+    {
+        if (!trackCpuAccessCycles)
+        {
+            return;
+        }
+
+        CpuAccessCycles++;
+        cpuCycleElapsed?.Invoke();
+    }
+}
