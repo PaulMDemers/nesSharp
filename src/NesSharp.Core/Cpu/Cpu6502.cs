@@ -223,7 +223,7 @@ public sealed class Cpu6502
             case 0x88: Y--; SetZeroNegative(Y); return 2;
             case 0x89: ReadByte(); return 2;
             case 0x8A: A = X; SetZeroNegative(A); return 2;
-            case 0x8B: A = (byte)(A & X & ReadByte()); SetZeroNegative(A); return 2;
+            case 0x8B: A = (byte)((A | 0xEE) & X & ReadByte()); SetZeroNegative(A); return 2;
             case 0x8C: Write(Absolute(), Y); return 4;
             case 0x8D: Write(Absolute(), A); return 4;
             case 0x8E: Write(Absolute(), X); return 4;
@@ -264,7 +264,7 @@ public sealed class Cpu6502
             case 0xA8: Y = A; SetZeroNegative(Y); return 2;
             case 0xA9: A = ReadByte(); SetZeroNegative(A); return 2;
             case 0xAA: X = A; SetZeroNegative(X); return 2;
-            case 0xAB: Lax((byte)(A & ReadByte())); return 2;
+            case 0xAB: Lax(ReadByte()); return 2;
             case 0xAC: Y = Read(Absolute()); SetZeroNegative(Y); return 4;
             case 0xAD: A = Read(Absolute()); SetZeroNegative(A); return 4;
             case 0xAE: X = Read(Absolute()); SetZeroNegative(X); return 4;
@@ -688,7 +688,7 @@ public sealed class Cpu6502
         A = (byte)(A & value);
         A = Ror(A);
         SetFlag(CarryFlag, (A & 0x40) != 0);
-        SetFlag(OverflowFlag, ((A >> 6) ^ (A >> 5) & 0x01) != 0);
+        SetFlag(OverflowFlag, (((A >> 6) ^ (A >> 5)) & 0x01) != 0);
         SetZeroNegative(A);
     }
 
@@ -721,15 +721,29 @@ public sealed class Cpu6502
     private void Shy()
     {
         var baseAddress = Absolute();
-        var address = (ushort)(baseAddress + X);
-        Write(address, (byte)(Y & ((address >> 8) + 1)));
+        var highMask = (byte)(((baseAddress >> 8) + 1) & 0xFF);
+        var low = (byte)(baseAddress + X);
+        var high = (byte)(baseAddress >> 8);
+        if (((baseAddress & 0x00FF) + X) > 0xFF)
+        {
+            high &= Y;
+        }
+
+        Write((ushort)((high << 8) | low), (byte)(Y & highMask));
     }
 
     private void Shx()
     {
         var baseAddress = Absolute();
-        var address = (ushort)(baseAddress + Y);
-        Write(address, (byte)(X & ((address >> 8) + 1)));
+        var highMask = (byte)(((baseAddress >> 8) + 1) & 0xFF);
+        var low = (byte)(baseAddress + Y);
+        var high = (byte)(baseAddress >> 8);
+        if (((baseAddress & 0x00FF) + Y) > 0xFF)
+        {
+            high &= X;
+        }
+
+        Write((ushort)((high << 8) | low), (byte)(X & highMask));
     }
 
     private bool GetFlag(byte flag) => (Status & flag) != 0;

@@ -3,6 +3,8 @@ using System.Text.RegularExpressions;
 using NesSharp.Core.Cartridge;
 using NesSharp.Core.Cpu;
 using NesSharp.Core.Memory;
+using NesSharp.Core.Runtime;
+using NesSharp.Core.Testing;
 
 if (args.Length == 0 || args[0] is "-h" or "--help")
 {
@@ -17,6 +19,7 @@ try
         "info" => PrintRomInfo(args),
         "trace" => TraceRom(args),
         "nestest" => RunNestestDiff(args),
+        "test-rom" => RunTestRom(args),
         _ => UnknownCommand(args[0])
     };
 }
@@ -68,6 +71,34 @@ static void PrintUsage()
     Console.WriteLine("                   Print compact CPU state trace lines.");
     Console.WriteLine("  nestest <rom.nes> <nestest.log>");
     Console.WriteLine("                   Compare CPU execution against Kevin Horton's nestest log.");
+    Console.WriteLine("  test-rom <rom.nes> [--max-instructions 50000000]");
+    Console.WriteLine("                   Run a blargg-style ROM and report $6000 output.");
+}
+
+static int RunTestRom(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.Error.WriteLine("Usage: NesSharp.Cli test-rom <rom.nes> [--max-instructions 50000000]");
+        return 1;
+    }
+
+    var maxInstructions = GetLongOption(args, "--max-instructions", 50_000_000);
+    var machine = NesMachine.LoadFile(args[1]);
+    var result = BlarggTestRunner.Run(machine, maxInstructions);
+
+    Console.WriteLine($"Status: {result.Status}");
+    Console.WriteLine($"Result code: {(result.ResultCode is null ? "<none>" : $"${result.ResultCode:X2}")}");
+    Console.WriteLine($"Instructions: {result.InstructionsExecuted}");
+    Console.WriteLine($"CPU cycles: {result.CpuCycles}");
+
+    if (!string.IsNullOrWhiteSpace(result.Output))
+    {
+        Console.WriteLine();
+        Console.WriteLine(result.Output.TrimEnd());
+    }
+
+    return result.Passed ? 0 : 1;
 }
 
 static int TraceRom(string[] args)
@@ -166,6 +197,12 @@ static int GetIntOption(string[] args, string name, int defaultValue)
 {
     var value = GetOption(args, name);
     return value is null ? defaultValue : int.Parse(value, CultureInfo.InvariantCulture);
+}
+
+static long GetLongOption(string[] args, string name, long defaultValue)
+{
+    var value = GetOption(args, name);
+    return value is null ? defaultValue : long.Parse(value, CultureInfo.InvariantCulture);
 }
 
 static string? GetOption(string[] args, string name)
