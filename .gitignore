@@ -1,0 +1,11 @@
+bin/
+obj/
+.vs/
+.vscode/
+TestResults/
+*.user
+*.suo
+
+# Local ROM/test-ROM fixtures. Keep README/provenance tracked, not the ROM payloads.
+roms/
+test-roms/nes-test-roms/
