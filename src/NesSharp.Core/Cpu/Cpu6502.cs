@@ -14,6 +14,7 @@ public sealed class Cpu6502
     private const byte NegativeFlag = (byte)ProcessorStatus.Negative;
 
     private readonly CpuBus bus;
+    private bool nmiRequested;
 
     public Cpu6502(CpuBus bus)
     {
@@ -36,6 +37,7 @@ public sealed class Cpu6502
 
     public void Reset()
     {
+        nmiRequested = false;
         A = 0;
         X = 0;
         Y = 0;
@@ -43,6 +45,11 @@ public sealed class Cpu6502
         Status = UnusedFlag | InterruptDisableFlag;
         ProgramCounter = bus.ReadWord(0xFFFC);
         Cycles = 7;
+    }
+
+    public void RequestNmi()
+    {
+        nmiRequested = true;
     }
 
     public void SetProgramCounter(ushort programCounter)
@@ -81,6 +88,14 @@ public sealed class Cpu6502
 
     public int Step()
     {
+        if (nmiRequested)
+        {
+            nmiRequested = false;
+            ServiceNmi();
+            Cycles += 7;
+            return 7;
+        }
+
         var opcode = ReadByte();
         var cycles = Execute(opcode);
         Cycles += (uint)cycles;
@@ -492,6 +507,15 @@ public sealed class Cpu6502
         var low = Pull();
         var high = Pull();
         ProgramCounter = (ushort)(low | (high << 8));
+    }
+
+    private void ServiceNmi()
+    {
+        Push((byte)(ProgramCounter >> 8));
+        Push((byte)(ProgramCounter & 0x00FF));
+        Push((byte)((Status & ~BreakFlag) | UnusedFlag));
+        SetFlag(InterruptDisableFlag, true);
+        ProgramCounter = bus.ReadWord(0xFFFA);
     }
 
     private void Push(byte value)

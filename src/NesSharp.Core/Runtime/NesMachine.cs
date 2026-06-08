@@ -30,12 +30,19 @@ public sealed class NesMachine
 
     public void Reset()
     {
+        PpuBus.Reset();
         Cpu.Reset();
     }
 
     public int StepInstruction()
     {
-        return Cpu.Step();
+        var cpuCycles = Cpu.Step();
+        PpuBus.Clock(cpuCycles * 3);
+        if (PpuBus.PollNmi())
+        {
+            Cpu.RequestNmi();
+        }
+
+        return cpuCycles;
     }
 }
-
