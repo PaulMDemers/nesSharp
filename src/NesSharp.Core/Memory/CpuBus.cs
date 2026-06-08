@@ -53,8 +53,8 @@ public sealed class CpuBus
         {
             <= 0x1FFF => ram[address & 0x07FF],
             >= 0x2000 and <= 0x3FFF => ppuBus.ReadRegister((ushort)(0x2000 + (address & 0x0007))),
-            >= 0x4020 => Cartridge.CpuRead(address),
-            _ => 0
+            >= 0x4000 and <= 0x401F => 0,
+            >= 0x4020 => Cartridge.CpuRead(address)
         };
     }
 
@@ -73,6 +73,9 @@ public sealed class CpuBus
                 break;
             case >= 0x2000 and <= 0x3FFF:
                 ppuBus.WriteRegister((ushort)(0x2000 + (address & 0x0007)), value);
+                break;
+            case 0x4014:
+                RunOamDma(value);
                 break;
             case >= 0x4020:
                 Cartridge.CpuWrite(address, value);
@@ -103,5 +106,19 @@ public sealed class CpuBus
 
         CpuAccessCycles++;
         cpuCycleElapsed?.Invoke();
+    }
+
+    private void RunOamDma(byte page)
+    {
+        var baseAddress = page << 8;
+        for (var i = 0; i < 256; i++)
+        {
+            ppuBus.WriteOamDmaByte(ReadRaw((ushort)(baseAddress + i)));
+        }
+
+        for (var i = 0; i < 513; i++)
+        {
+            ClockCpuAccess();
+        }
     }
 }

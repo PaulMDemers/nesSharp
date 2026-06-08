@@ -257,7 +257,7 @@ public sealed class Cpu6502
             case 0x8E: Write(Absolute(), X); return 4;
             case 0x8F: Sax(Absolute()); return 4;
             case 0x90: return Branch(!GetFlag(CarryFlag));
-            case 0x91: Write(IndirectIndexedAddress(), A); return 6;
+            case 0x91: StoreIndirectIndexed(A); return 6;
             case 0x93:
             {
                 var address = IndirectIndexedAddress();
@@ -269,11 +269,11 @@ public sealed class Cpu6502
             case 0x96: Write(ZeroPageY(), X); return 4;
             case 0x97: Sax(ZeroPageY()); return 4;
             case 0x98: A = Y; SetZeroNegative(A); return 2;
-            case 0x99: Write(AbsoluteYAddress(), A); return 5;
+            case 0x99: StoreAbsoluteY(A); return 5;
             case 0x9A: StackPointer = X; return 2;
             case 0x9B: Tas(); return 5;
             case 0x9C: Shy(); return 5;
-            case 0x9D: Write(AbsoluteXAddress(), A); return 5;
+            case 0x9D: StoreAbsoluteX(A); return 5;
             case 0x9E: Shx(); return 5;
             case 0x9F:
             {
@@ -657,6 +657,41 @@ public sealed class Cpu6502
         var value = (byte)(Read(address) + 1);
         Write(address, value);
         SetZeroNegative(value);
+    }
+
+    private void StoreWithDummyRead(ushort address, byte value)
+    {
+        Read(address);
+        Write(address, value);
+    }
+
+    private void StoreAbsoluteX(byte value)
+    {
+        var baseAddress = Absolute();
+        StoreIndexed(baseAddress, X, value);
+    }
+
+    private void StoreAbsoluteY(byte value)
+    {
+        var baseAddress = Absolute();
+        StoreIndexed(baseAddress, Y, value);
+    }
+
+    private void StoreIndirectIndexed(byte value)
+    {
+        var pointer = ReadByte();
+        var low = Read(pointer);
+        var high = Read((byte)(pointer + 1));
+        var baseAddress = (ushort)(low | (high << 8));
+        StoreIndexed(baseAddress, Y, value);
+    }
+
+    private void StoreIndexed(ushort baseAddress, byte index, byte value)
+    {
+        var finalAddress = (ushort)(baseAddress + index);
+        var dummyAddress = (ushort)((baseAddress & 0xFF00) | ((baseAddress + index) & 0x00FF));
+        Read(dummyAddress);
+        Write(finalAddress, value);
     }
 
     private void Slo(ushort address)

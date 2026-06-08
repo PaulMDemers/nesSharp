@@ -18,6 +18,7 @@ dotnet run --project src\NesSharp.Cli -- test-rom test-roms\nes-test-roms\ppu_vb
 - Parses iNES headers.
 - Loads Mapper 0 / NROM cartridges.
 - Supports NROM PRG mirroring, CHR ROM, CHR RAM, trainer skipping, and PRG RAM at `$6000-$7FFF`.
+- Supports Mapper 3 / CNROM fixed PRG with switchable 8 KB CHR banks.
 - Provides a CPU bus shell with internal RAM mirroring, PPU register mirroring, and cartridge space.
 - Provides a CPU reset skeleton that reads the reset vector from cartridge ROM.
 - Executes the 6502 official opcode set and the stable unofficial opcodes needed by `nestest`.
@@ -28,7 +29,9 @@ dotnet run --project src\NesSharp.Cli -- test-rom test-roms\nes-test-roms\ppu_vb
 - Implements PPU vblank set/clear behavior, `$2002` read side effects, basic NMI control, and odd-frame clock skip.
 - Advances PPU timing during CPU bus accesses, with raw bus reads preserved for tracing/debug inspection.
 - Models the `$2002` vblank-set suppression window and near-vblank NMI cancellation.
+- Implements CPU-visible PPU VRAM, nametable mirroring, palette mirroring, buffered `$2007` reads, `$2005/$2006` write latch behavior, OAM, OAM DMA, and PPU open-bus decay.
 - Passes `ppu_vbl_nmi` ROMs `01-vbl_basics`, `02-vbl_set_time`, `03-vbl_clear_time`, `04-nmi_control`, `06-suppression`, and `09-even_odd_frames`.
+- Passes `ppu_open_bus`, `oam_read`, and `oam_stress`.
 - Includes focused xUnit coverage using synthetic ROMs and the downloaded `nestest.nes`.
 
 ## Known Next Accuracy Work

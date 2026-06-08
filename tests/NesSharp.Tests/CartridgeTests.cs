@@ -110,6 +110,25 @@ public sealed class CartridgeTests
     }
 
     [Fact]
+    public void Mapper3SwitchesChrBanks()
+    {
+        var rom = CreateRom(prgBanks: 2, chrBanks: 2);
+        rom[6] = 0x30;
+        var chrOffset = 16 + 2 * 16 * 1024;
+        rom[chrOffset] = 0x11;
+        rom[chrOffset + 8 * 1024] = 0x22;
+
+        var cartridge = INesRomLoader.Load(rom);
+
+        Assert.Equal(3, cartridge.Header.MapperNumber);
+        Assert.Equal(0x11, cartridge.PpuRead(0x0000));
+
+        cartridge.CpuWrite(0x8000, 0x01);
+
+        Assert.Equal(0x22, cartridge.PpuRead(0x0000));
+    }
+
+    [Fact]
     public void RejectsInvalidMagic()
     {
         var rom = CreateRom(prgBanks: 1, chrBanks: 1);
@@ -154,4 +173,3 @@ public sealed class CartridgeTests
         throw new DirectoryNotFoundException("Could not find workspace root containing test-roms/nes-test-roms.");
     }
 }
-
