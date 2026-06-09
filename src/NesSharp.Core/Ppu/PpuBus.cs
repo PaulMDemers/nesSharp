@@ -10,12 +10,15 @@ public sealed class PpuBus
     private const byte NmiEnableFlag = 0x80;
     private const int DotsPerScanline = 341;
     private const int ScanlinesPerFrame = 262;
+    private const int ScreenWidth = 256;
+    private const int ScreenHeight = 240;
     private const ulong OpenBusDecayDots = 60UL * DotsPerScanline * ScanlinesPerFrame;
 
     private readonly Cartridge.Cartridge cartridge;
     private readonly byte[] nametableRam = new byte[2 * 1024];
     private readonly byte[] paletteRam = new byte[32];
     private readonly byte[] oam = new byte[256];
+    private readonly byte[] framebuffer = new byte[ScreenWidth * ScreenHeight];
     private readonly byte[] registers = new byte[8];
     private bool nmiPending;
     private int nmiPollDelay;
@@ -47,6 +50,8 @@ public sealed class PpuBus
     public ulong TotalDots { get; private set; }
 
     public event Action? NmiSuppressed;
+
+    public ReadOnlySpan<byte> Framebuffer => framebuffer;
 
     public byte ReadRegister(ushort address)
     {
@@ -123,6 +128,7 @@ public sealed class PpuBus
         Array.Clear(nametableRam);
         Array.Clear(paletteRam);
         Array.Clear(oam);
+        Array.Clear(framebuffer);
         Dot = 0;
         Scanline = 0;
         Frame = 0;
@@ -186,6 +192,7 @@ public sealed class PpuBus
                 ClearRenderingFlags();
             }
 
+            RenderCurrentPixel();
             EvaluateSpriteZeroHit();
         }
     }
@@ -465,8 +472,47 @@ public sealed class PpuBus
         registers[2] |= SpriteZeroHitFlag;
     }
 
+    private void RenderCurrentPixel()
+    {
+        if (Scanline is < 0 or >= ScreenHeight || Dot is < 1 or > ScreenWidth)
+        {
+            return;
+        }
+
+        var x = Dot - 1;
+        var y = Scanline;
+        var backgroundPixel = GetBackgroundPixelWithPalette(x, y);
+        var spritePixel = GetSpritePixelWithPalette(x, y);
+        framebuffer[y * ScreenWidth + x] = ComposePixel(backgroundPixel, spritePixel);
+    }
+
+    private byte ComposePixel(PpuPixel backgroundPixel, PpuPixel spritePixel)
+    {
+        if (spritePixel.Color == 0)
+        {
+            return ReadPaletteEntry(backgroundPixel.PaletteAddress);
+        }
+
+        if (backgroundPixel.Color == 0)
+        {
+            return ReadPaletteEntry(spritePixel.PaletteAddress);
+        }
+
+        return ReadPaletteEntry(spritePixel.PriorityBehindBackground ? backgroundPixel.PaletteAddress : spritePixel.PaletteAddress);
+    }
+
     private int GetBackgroundPixel(int x, int y)
     {
+        return GetBackgroundPixelWithPalette(x, y).Color;
+    }
+
+    private PpuPixel GetBackgroundPixelWithPalette(int x, int y)
+    {
+        if (!IsBackgroundEnabled || (x < 8 && !ShowBackgroundInLeftColumn))
+        {
+            return PpuPixel.Transparent;
+        }
+
         var scrolledX = (scrollX + x) & 0x01FF;
         var scrolledY = (scrollY + y) & 0x01FF;
         var nametableSelect = registers[0] & 0x03;
@@ -482,7 +528,17 @@ public sealed class PpuBus
         var low = cartridge.PpuRead(patternAddress);
         var high = cartridge.PpuRead((ushort)(patternAddress + 8));
         var bit = 7 - (scrolledX & 0x07);
-        return ((low >> bit) & 0x01) | (((high >> bit) & 0x01) << 1);
+        var color = ((low >> bit) & 0x01) | (((high >> bit) & 0x01) << 1);
+        if (color == 0)
+        {
+            return PpuPixel.Transparent;
+        }
+
+        var attributeAddress = (ushort)(0x2000 + table * 0x0400 + 0x03C0 + (tileY / 4) * 8 + (tileX / 4));
+        var attribute = ReadMemory(attributeAddress);
+        var shift = ((tileY & 0x02) << 1) | (tileX & 0x02);
+        var palette = (attribute >> shift) & 0x03;
+        return new PpuPixel(color, (ushort)(0x3F00 + palette * 4 + color), false);
     }
 
     private int GetSpriteZeroPixel(int x, int y)
@@ -533,5 +589,93 @@ public sealed class PpuBus
         var high = cartridge.PpuRead((ushort)(patternAddress + 8));
         var bit = 7 - relativeX;
         return ((low >> bit) & 0x01) | (((high >> bit) & 0x01) << 1);
+    }
+
+    private PpuPixel GetSpritePixelWithPalette(int x, int y)
+    {
+        if (!IsSpriteRenderingEnabled || (x < 8 && !ShowSpritesInLeftColumn))
+        {
+            return PpuPixel.Transparent;
+        }
+
+        for (var spriteIndex = 0; spriteIndex < 64; spriteIndex++)
+        {
+            var pixel = GetSpritePixel(spriteIndex, x, y);
+            if (pixel.Color != 0)
+            {
+                return pixel;
+            }
+        }
+
+        return PpuPixel.Transparent;
+    }
+
+    private PpuPixel GetSpritePixel(int spriteIndex, int x, int y)
+    {
+        var offset = spriteIndex * 4;
+        var spriteY = oam[offset] + 1;
+        var tileIndex = oam[offset + 1];
+        var attributes = oam[offset + 2];
+        var spriteX = oam[offset + 3];
+        var height = (registers[0] & 0x20) == 0 ? 8 : 16;
+        var relativeX = x - spriteX;
+        var relativeY = y - spriteY;
+
+        if (relativeX is < 0 or >= 8 || relativeY < 0 || relativeY >= height)
+        {
+            return PpuPixel.Transparent;
+        }
+
+        if ((attributes & 0x40) != 0)
+        {
+            relativeX = 7 - relativeX;
+        }
+
+        if ((attributes & 0x80) != 0)
+        {
+            relativeY = height - 1 - relativeY;
+        }
+
+        int patternBase;
+        int tile;
+        if (height == 16)
+        {
+            patternBase = (tileIndex & 0x01) * 0x1000;
+            tile = tileIndex & 0xFE;
+            if (relativeY >= 8)
+            {
+                tile++;
+                relativeY -= 8;
+            }
+        }
+        else
+        {
+            patternBase = (registers[0] & 0x08) == 0 ? 0x0000 : 0x1000;
+            tile = tileIndex;
+        }
+
+        var patternAddress = (ushort)(patternBase + tile * 16 + relativeY);
+        var low = cartridge.PpuRead(patternAddress);
+        var high = cartridge.PpuRead((ushort)(patternAddress + 8));
+        var bit = 7 - relativeX;
+        var color = ((low >> bit) & 0x01) | (((high >> bit) & 0x01) << 1);
+        if (color == 0)
+        {
+            return PpuPixel.Transparent;
+        }
+
+        var palette = attributes & 0x03;
+        var priorityBehindBackground = (attributes & 0x20) != 0;
+        return new PpuPixel(color, (ushort)(0x3F10 + palette * 4 + color), priorityBehindBackground);
+    }
+
+    private byte ReadPaletteEntry(ushort paletteAddress)
+    {
+        return (byte)(paletteRam[MapPaletteAddress(paletteAddress)] & 0x3F);
+    }
+
+    private readonly record struct PpuPixel(int Color, ushort PaletteAddress, bool PriorityBehindBackground)
+    {
+        public static readonly PpuPixel Transparent = new(0, 0x3F00, false);
     }
 }

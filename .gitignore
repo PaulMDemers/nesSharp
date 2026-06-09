@@ -5,6 +5,7 @@ obj/
 TestResults/
 *.user
 *.suo
+artifacts/
 
 # Local ROM/test-ROM fixtures. Keep README/provenance tracked, not the ROM payloads.
 roms/

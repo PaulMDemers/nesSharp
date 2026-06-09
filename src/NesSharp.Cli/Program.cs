@@ -20,6 +20,7 @@ try
         "trace" => TraceRom(args),
         "nestest" => RunNestestDiff(args),
         "test-rom" => RunTestRom(args),
+        "render-frame" => RenderFrame(args),
         _ => UnknownCommand(args[0])
     };
 }
@@ -73,6 +74,8 @@ static void PrintUsage()
     Console.WriteLine("                   Compare CPU execution against Kevin Horton's nestest log.");
     Console.WriteLine("  test-rom <rom.nes> [--max-instructions 50000000]");
     Console.WriteLine("                   Run a blargg-style ROM and report $6000 output.");
+    Console.WriteLine("  render-frame <rom.nes> --out frame.ppm [--frames 1] [--max-instructions 50000000]");
+    Console.WriteLine("                   Run a ROM and export the latest 256x240 framebuffer as PPM.");
 }
 
 static int RunTestRom(string[] args)
@@ -99,6 +102,45 @@ static int RunTestRom(string[] args)
     }
 
     return result.Passed ? 0 : 1;
+}
+
+static int RenderFrame(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.Error.WriteLine("Usage: NesSharp.Cli render-frame <rom.nes> --out frame.ppm [--frames 1] [--max-instructions 50000000]");
+        return 1;
+    }
+
+    var outputPath = GetOption(args, "--out");
+    if (string.IsNullOrWhiteSpace(outputPath))
+    {
+        Console.Error.WriteLine("Missing required --out <frame.ppm> option.");
+        return 1;
+    }
+
+    var frames = GetIntOption(args, "--frames", 1);
+    var maxInstructions = GetLongOption(args, "--max-instructions", 50_000_000);
+    var machine = NesMachine.LoadFile(args[1]);
+    machine.Reset();
+    var targetFrame = machine.PpuBus.Frame + (ulong)Math.Max(1, frames);
+
+    long instructions = 0;
+    while (machine.PpuBus.Frame < targetFrame && instructions < maxInstructions)
+    {
+        machine.StepInstruction();
+        instructions++;
+    }
+
+    if (machine.PpuBus.Frame < targetFrame)
+    {
+        Console.Error.WriteLine($"Timed out after {instructions} instructions before reaching frame {targetFrame}.");
+        return 1;
+    }
+
+    PpmWriter.Write(outputPath, machine.PpuBus.Framebuffer);
+    Console.WriteLine($"Wrote {Path.GetFullPath(outputPath)} after {instructions} instructions, frame {machine.PpuBus.Frame}.");
+    return 0;
 }
 
 static int TraceRom(string[] args)
@@ -270,4 +312,51 @@ internal sealed partial record NestestLogState(
 
     [GeneratedRegex(@"^(?<pc>[0-9A-F]{4})\s+(?<op>[0-9A-F]{2}).*A:(?<a>[0-9A-F]{2}) X:(?<x>[0-9A-F]{2}) Y:(?<y>[0-9A-F]{2}) P:(?<p>[0-9A-F]{2}) SP:(?<sp>[0-9A-F]{2}).*CYC:\s*(?<cyc>\d+)$")]
     private static partial Regex NestestLineRegex();
+}
+
+internal static class PpmWriter
+{
+    public static void Write(string path, ReadOnlySpan<byte> framebuffer)
+    {
+        var directory = Path.GetDirectoryName(Path.GetFullPath(path));
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        using var stream = File.Create(path);
+        using var writer = new StreamWriter(stream, leaveOpen: true);
+        writer.Write("P6\n256 240\n255\n");
+        writer.Flush();
+
+        Span<byte> rgb = stackalloc byte[3];
+        foreach (var paletteIndex in framebuffer)
+        {
+            var (r, g, b) = NesPalette[paletteIndex & 0x3F];
+            rgb[0] = r;
+            rgb[1] = g;
+            rgb[2] = b;
+            stream.Write(rgb);
+        }
+    }
+
+    private static readonly (byte R, byte G, byte B)[] NesPalette =
+    [
+        (0x62, 0x62, 0x62), (0x00, 0x1F, 0xB2), (0x24, 0x04, 0xC8), (0x52, 0x00, 0xB2),
+        (0x73, 0x00, 0x76), (0x80, 0x00, 0x24), (0x73, 0x0B, 0x00), (0x52, 0x28, 0x00),
+        (0x24, 0x44, 0x00), (0x00, 0x57, 0x00), (0x00, 0x5C, 0x00), (0x00, 0x53, 0x24),
+        (0x00, 0x3C, 0x76), (0x00, 0x00, 0x00), (0x00, 0x00, 0x00), (0x00, 0x00, 0x00),
+        (0xAB, 0xAB, 0xAB), (0x0D, 0x57, 0xFF), (0x4B, 0x30, 0xFF), (0x8A, 0x13, 0xFF),
+        (0xBC, 0x08, 0xD6), (0xD2, 0x12, 0x69), (0xC7, 0x2E, 0x00), (0x9D, 0x54, 0x00),
+        (0x60, 0x78, 0x00), (0x20, 0x8A, 0x00), (0x00, 0x8F, 0x00), (0x00, 0x83, 0x57),
+        (0x00, 0x6B, 0xC7), (0x00, 0x00, 0x00), (0x00, 0x00, 0x00), (0x00, 0x00, 0x00),
+        (0xFF, 0xFF, 0xFF), (0x53, 0xAE, 0xFF), (0x90, 0x85, 0xFF), (0xD3, 0x65, 0xFF),
+        (0xFF, 0x57, 0xFF), (0xFF, 0x5D, 0xCF), (0xFF, 0x77, 0x57), (0xFA, 0x9E, 0x00),
+        (0xBD, 0xC7, 0x00), (0x7A, 0xE7, 0x00), (0x43, 0xF6, 0x11), (0x26, 0xEF, 0x7E),
+        (0x2C, 0xD5, 0xF6), (0x4E, 0x4E, 0x4E), (0x00, 0x00, 0x00), (0x00, 0x00, 0x00),
+        (0xFF, 0xFF, 0xFF), (0xB6, 0xE1, 0xFF), (0xCE, 0xD1, 0xFF), (0xE9, 0xC3, 0xFF),
+        (0xFF, 0xBC, 0xFF), (0xFF, 0xBD, 0xF4), (0xFF, 0xC6, 0xC3), (0xFF, 0xD5, 0x9A),
+        (0xE9, 0xE6, 0x81), (0xCE, 0xF4, 0x81), (0xB6, 0xFB, 0x9A), (0xA9, 0xFA, 0xC3),
+        (0xA9, 0xF0, 0xF4), (0xB8, 0xB8, 0xB8), (0x00, 0x00, 0x00), (0x00, 0x00, 0x00)
+    ];
 }
