@@ -15,7 +15,7 @@ dotnet run --project src\NesSharp.Cli -- render-frame test-roms\nes-test-roms\pp
 dotnet run --project src\NesSharp.Desktop -- test-roms\nes-test-roms\ppu_read_buffer\test_ppu_read_buffer.nes
 ```
 
-Desktop controller 1 mapping: `Z` = A, `X` = B, `Backspace` = Select, `Enter` = Start, arrow keys = D-pad.
+Desktop controller 1 mapping: `Z` = A, `X` = B, `Backspace` = Select, `Enter` = Start, arrow keys = D-pad. Use `Ctrl+R` for reset and `Ctrl+Shift+R` for power cycle.
 Battery-backed saves are loaded from and written to a `.sav` file beside the ROM in the desktop host.
 
 ## Current Status
@@ -46,6 +46,7 @@ Battery-backed saves are loaded from and written to a `.sav` file beside the ROM
 - Implements standard controller strobe/read behavior on `$4016/$4017`.
 - Includes an initial WinForms desktop host with framebuffer display, ROM loading, reset/pause actions, and keyboard input for controller 1.
 - Runs desktop emulation on a background frame loop with UI-thread framebuffer presentation.
+- Includes a desktop power-cycle command that rebuilds mapper/machine state while preserving battery-backed save data.
 - Passes `ppu_vbl_nmi` ROMs `01-vbl_basics`, `02-vbl_set_time`, `03-vbl_clear_time`, `04-nmi_control`, `06-suppression`, and `09-even_odd_frames`.
 - Passes `ppu_open_bus`, `ppu_read_buffer`, `oam_read`, and `oam_stress`.
 - Includes focused xUnit coverage using synthetic ROMs and the downloaded `nestest.nes`.

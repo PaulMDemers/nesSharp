@@ -13,6 +13,7 @@ internal sealed class EmulatorForm : Form
     private readonly NesDisplayControl display = new();
     private readonly ToolStripStatusLabel statusLabel = new();
     private readonly ToolStripMenuItem resetMenuItem = new("&Reset");
+    private readonly ToolStripMenuItem powerCycleMenuItem = new("&Power Cycle");
     private readonly ToolStripMenuItem pauseMenuItem = new("&Pause") { CheckOnClick = true };
     private readonly Lock machineLock = new();
 
@@ -118,6 +119,8 @@ internal sealed class EmulatorForm : Form
         var openMenuItem = new ToolStripMenuItem("&Open ROM...", null, (_, _) => ShowOpenRomDialog(), Keys.Control | Keys.O);
         resetMenuItem.ShortcutKeys = Keys.Control | Keys.R;
         resetMenuItem.Click += (_, _) => ResetMachine();
+        powerCycleMenuItem.ShortcutKeys = Keys.Control | Keys.Shift | Keys.R;
+        powerCycleMenuItem.Click += (_, _) => PowerCycleMachine();
         pauseMenuItem.ShortcutKeys = Keys.Space;
         pauseMenuItem.CheckedChanged += (_, _) =>
         {
@@ -136,6 +139,7 @@ internal sealed class EmulatorForm : Form
         var fileMenu = new ToolStripMenuItem("&File");
         fileMenu.DropDownItems.Add(openMenuItem);
         fileMenu.DropDownItems.Add(resetMenuItem);
+        fileMenu.DropDownItems.Add(powerCycleMenuItem);
         fileMenu.DropDownItems.Add(new ToolStripSeparator());
         fileMenu.DropDownItems.Add(new ToolStripMenuItem("E&xit", null, (_, _) => Close(), Keys.Alt | Keys.F4));
 
@@ -170,10 +174,8 @@ internal sealed class EmulatorForm : Form
             StopEmulationLoop();
             SaveCurrentBatteryRam();
 
-            var loadedMachine = NesMachine.LoadFile(path);
-            loadedMachine.Reset();
             var loadedSavePath = Path.ChangeExtension(path, ".sav");
-            LoadBatteryRam(loadedMachine, loadedSavePath);
+            var loadedMachine = LoadMachine(path, loadedSavePath);
 
             machine = loadedMachine;
             romPath = path;
@@ -188,6 +190,43 @@ internal sealed class EmulatorForm : Form
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidRomException or NotSupportedException)
         {
             MessageBox.Show(this, ex.Message, "Unable to open ROM", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            UpdateUiState();
+        }
+    }
+
+    private void PowerCycleMachine()
+    {
+        if (romPath is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var wasPaused = pauseMenuItem.Checked;
+            StopEmulationLoop();
+            SaveCurrentBatteryRam();
+
+            var loadedMachine = LoadMachine(romPath, savePath ?? Path.ChangeExtension(romPath, ".sav"));
+            lock (machineLock)
+            {
+                machine = loadedMachine;
+                controllerState = 0;
+                machine.Controller1.State = controllerState;
+                display.UpdateFrame(machine.PpuBus.Framebuffer);
+            }
+
+            pauseMenuItem.Checked = wasPaused;
+            UpdateUiState();
+            if (!pauseMenuItem.Checked)
+            {
+                StartEmulationLoop();
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidRomException or NotSupportedException)
+        {
+            pauseMenuItem.Checked = true;
+            MessageBox.Show(this, ex.Message, "Unable to power cycle", MessageBoxButtons.OK, MessageBoxIcon.Error);
             UpdateUiState();
         }
     }
@@ -373,6 +412,7 @@ internal sealed class EmulatorForm : Form
     {
         var hasRom = machine is not null;
         resetMenuItem.Enabled = hasRom;
+        powerCycleMenuItem.Enabled = hasRom;
         pauseMenuItem.Enabled = hasRom;
 
         if (!hasRom)
@@ -384,6 +424,14 @@ internal sealed class EmulatorForm : Form
         var state = pauseMenuItem.Checked ? "paused" : "running";
         var limited = frameLimited ? " - frame budget reached" : string.Empty;
         statusLabel.Text = $"{Path.GetFileName(romPath)} - frame {renderedFrame ?? machine!.PpuBus.Frame} - {state}{limited}";
+    }
+
+    private NesMachine LoadMachine(string path, string loadedSavePath)
+    {
+        var loadedMachine = NesMachine.LoadFile(path);
+        loadedMachine.Reset();
+        LoadBatteryRam(loadedMachine, loadedSavePath);
+        return loadedMachine;
     }
 
     private void LoadBatteryRam(NesMachine loadedMachine, string loadedSavePath)
