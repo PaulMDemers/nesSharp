@@ -38,6 +38,7 @@ public sealed class NesMachine
     public void Reset()
     {
         PpuBus.Reset();
+        CpuBus.ApuBus.Reset();
         Cpu.Reset();
     }
 
@@ -58,6 +59,7 @@ public sealed class NesMachine
 
     private void ClockOneCpuCycle()
     {
+        CpuBus.ApuBus.Clock();
         PpuBus.Clock(3);
         if (PpuBus.PollNmi())
         {
