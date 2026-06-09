@@ -33,6 +33,9 @@ dotnet run --project src\NesSharp.Cli -- render-frame test-roms\nes-test-roms\pp
 - Implements CPU-visible PPU VRAM, nametable mirroring, palette mirroring, buffered `$2007` reads, `$2005/$2006` write latch behavior, OAM, OAM DMA, and PPU open-bus decay.
 - Implements rudimentary visible-scanline background/sprite 0 pixel overlap detection for `$2002.6` sprite 0 hit.
 - Maintains a 256x240 palette-index framebuffer and can export it as binary PPM through the CLI.
+- Uses a shared NES RGB palette for frame export and visual regression hashing.
+- Includes a deterministic RGB hash regression for `ppu_read_buffer` frame 120.
+- Implements standard controller strobe/read behavior on `$4016/$4017`.
 - Passes `ppu_vbl_nmi` ROMs `01-vbl_basics`, `02-vbl_set_time`, `03-vbl_clear_time`, `04-nmi_control`, `06-suppression`, and `09-even_odd_frames`.
 - Passes `ppu_open_bus`, `ppu_read_buffer`, `oam_read`, and `oam_stress`.
 - Includes focused xUnit coverage using synthetic ROMs and the downloaded `nestest.nes`.

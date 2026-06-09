@@ -1,4 +1,5 @@
 using NesSharp.Core.Cartridge;
+using NesSharp.Core.Input;
 using NesSharp.Core.Ppu;
 
 namespace NesSharp.Core.Memory;
@@ -22,6 +23,10 @@ public sealed class CpuBus
     }
 
     public Cartridge.Cartridge Cartridge { get; }
+
+    public StandardController Controller1 { get; } = new();
+
+    public StandardController Controller2 { get; } = new();
 
     public int CpuAccessCycles { get; private set; }
 
@@ -53,6 +58,8 @@ public sealed class CpuBus
         {
             <= 0x1FFF => ram[address & 0x07FF],
             >= 0x2000 and <= 0x3FFF => ppuBus.ReadRegister((ushort)(0x2000 + (address & 0x0007))),
+            0x4016 => Controller1.Read(),
+            0x4017 => Controller2.Read(),
             >= 0x4000 and <= 0x401F => 0,
             >= 0x4020 => Cartridge.CpuRead(address)
         };
@@ -76,6 +83,11 @@ public sealed class CpuBus
                 break;
             case 0x4014:
                 RunOamDma(value);
+                break;
+            case 0x4016:
+                var strobe = (value & 0x01) != 0;
+                Controller1.WriteStrobe(strobe);
+                Controller2.WriteStrobe(strobe);
                 break;
             case >= 0x4020:
                 Cartridge.CpuWrite(address, value);

@@ -1,5 +1,6 @@
 using NesSharp.Core.Cartridge;
 using NesSharp.Core.Cpu;
+using NesSharp.Core.Input;
 using NesSharp.Core.Memory;
 using NesSharp.Core.Ppu;
 
@@ -24,6 +25,10 @@ public sealed class NesMachine
     public PpuBus PpuBus { get; }
 
     public Cpu6502 Cpu { get; }
+
+    public StandardController Controller1 => CpuBus.Controller1;
+
+    public StandardController Controller2 => CpuBus.Controller2;
 
     public static NesMachine LoadFile(string path)
     {
