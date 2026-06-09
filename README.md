@@ -47,6 +47,7 @@ Battery-backed saves are loaded from and written to a `.sav` file beside the ROM
 - Adds initial CPU-visible APU register scaffolding for `$4000-$4013`, `$4015`, and `$4017`, including channel enable/status bits and frame interrupt status behavior.
 - Supports CPU IRQ servicing and routes APU frame IRQs to the CPU when not inhibited.
 - Models initial pulse-channel register state, length halt, envelope restart/clocking, timer period, and sweep target calculation.
+- Models initial triangle-channel register state, timer period, length counter, and linear counter reload/control behavior.
 - Includes an initial WinForms desktop host with framebuffer display, ROM loading, reset/pause actions, and keyboard input for controller 1.
 - Runs desktop emulation on a background frame loop with UI-thread framebuffer presentation.
 - Includes a desktop power-cycle command that rebuilds mapper/machine state while preserving battery-backed save data.

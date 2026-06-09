@@ -98,6 +98,93 @@ public sealed class ApuBusTests
     }
 
     [Fact]
+    public void TriangleLinearCounterRegisterCapturesControlAndReloadValue()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x4008, 0b1000_0111);
+
+        Assert.True(apu.Triangle.ControlFlag);
+        Assert.Equal(7, apu.Triangle.LinearCounterReloadValue);
+    }
+
+    [Fact]
+    public void TriangleTimerRegistersFormElevenBitPeriod()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x400A, 0x34);
+        apu.WriteRegister(0x400B, 0x85);
+
+        Assert.Equal(0x0534, apu.Triangle.TimerPeriod);
+    }
+
+    [Fact]
+    public void TriangleLengthCounterLoadsWhenChannelIsEnabled()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x4015, 0x04);
+        apu.WriteRegister(0x400B, 0x18);
+
+        Assert.Equal(2, apu.Triangle.LengthCounter);
+        Assert.Equal(0x04, apu.ReadStatus() & 0x04);
+    }
+
+    [Fact]
+    public void TriangleLinearCounterReloadsOnQuarterFrameAndClearsWhenControlIsClear()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x4015, 0x04);
+        apu.WriteRegister(0x4008, 0x03);
+        apu.WriteRegister(0x400B, 0x00);
+        apu.WriteRegister(0x4017, 0x80);
+
+        Assert.Equal(3, apu.Triangle.LinearCounter);
+
+        apu.WriteRegister(0x4017, 0x80);
+
+        Assert.Equal(2, apu.Triangle.LinearCounter);
+    }
+
+    [Fact]
+    public void TriangleControlFlagKeepsLinearCounterReloadingAndHaltsLengthCounter()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x4015, 0x04);
+        apu.WriteRegister(0x4008, 0x82);
+        apu.WriteRegister(0x400B, 0x18);
+        apu.WriteRegister(0x4017, 0x80);
+
+        Assert.Equal(2, apu.Triangle.LinearCounter);
+        Assert.Equal(2, apu.Triangle.LengthCounter);
+
+        apu.WriteRegister(0x4017, 0x80);
+
+        Assert.Equal(2, apu.Triangle.LinearCounter);
+        Assert.Equal(2, apu.Triangle.LengthCounter);
+    }
+
+    [Fact]
+    public void TriangleSequencerRequiresLengthAndLinearCounters()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x4015, 0x04);
+        apu.WriteRegister(0x4008, 0x01);
+        apu.WriteRegister(0x400B, 0x00);
+        apu.WriteRegister(0x4017, 0x80);
+
+        Assert.True(apu.Triangle.IsSequencerClocking);
+
+        apu.WriteRegister(0x4015, 0x00);
+
+        Assert.False(apu.Triangle.IsSequencerClocking);
+    }
+
+    [Fact]
     public void DisablingChannelClearsItsLengthCounterStatus()
     {
         var apu = new ApuBus();

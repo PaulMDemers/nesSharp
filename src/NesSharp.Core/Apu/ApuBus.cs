@@ -24,12 +24,13 @@ public sealed class ApuBus
     private bool frameInterrupt;
     private bool dmcInterrupt;
 
-    private byte triangleLength;
     private byte noiseLength;
 
     public ApuPulseChannel Pulse1 { get; } = new(onesComplementNegate: true);
 
     public ApuPulseChannel Pulse2 { get; } = new(onesComplementNegate: false);
+
+    public ApuTriangleChannel Triangle { get; } = new();
 
     public byte FrameCounterControl => frameCounterControl;
 
@@ -41,6 +42,7 @@ public sealed class ApuBus
     {
         Pulse1.Reset();
         Pulse2.Reset();
+        Triangle.Reset();
         WriteStatus(0);
         frameCounterControl = 0;
         frameCycle = 0;
@@ -93,7 +95,7 @@ public sealed class ApuBus
         var value = (byte)(
             (Pulse1.LengthCounter > 0 ? Pulse1Enable : 0) |
             (Pulse2.LengthCounter > 0 ? Pulse2Enable : 0) |
-            (triangleLength > 0 ? TriangleEnable : 0) |
+            (Triangle.LengthCounter > 0 ? TriangleEnable : 0) |
             (noiseLength > 0 ? NoiseEnable : 0) |
             (frameInterrupt ? FrameInterruptStatus : 0) |
             (dmcInterrupt ? DmcInterruptStatus : 0));
@@ -130,8 +132,14 @@ public sealed class ApuBus
             case 0x4007:
                 Pulse2.WriteTimerHigh(value, LengthCounterTable);
                 break;
+            case 0x4008:
+                Triangle.WriteLinearCounter(value);
+                break;
+            case 0x400A:
+                Triangle.WriteTimerLow(value);
+                break;
             case 0x400B:
-                LoadLengthCounter(ref triangleLength, value, TriangleEnable);
+                Triangle.WriteTimerHigh(value, LengthCounterTable);
                 break;
             case 0x400F:
                 LoadLengthCounter(ref noiseLength, value, NoiseEnable);
@@ -155,11 +163,7 @@ public sealed class ApuBus
         dmcInterrupt = false;
         Pulse1.SetEnabled((statusEnable & Pulse1Enable) != 0);
         Pulse2.SetEnabled((statusEnable & Pulse2Enable) != 0);
-
-        if ((statusEnable & TriangleEnable) == 0)
-        {
-            triangleLength = 0;
-        }
+        Triangle.SetEnabled((statusEnable & TriangleEnable) != 0);
 
         if ((statusEnable & NoiseEnable) == 0)
         {
@@ -195,16 +199,16 @@ public sealed class ApuBus
     {
         Pulse1.ClockEnvelope();
         Pulse2.ClockEnvelope();
-        // Triangle linear counter clocks land here once that unit exists.
+        Triangle.ClockLinearCounter();
     }
 
     private void ClockHalfFrame()
     {
         Pulse1.ClockLengthCounter();
         Pulse2.ClockLengthCounter();
+        Triangle.ClockLengthCounter();
         Pulse1.ClockSweep();
         Pulse2.ClockSweep();
-        ClockLengthCounter(ref triangleLength);
         ClockLengthCounter(ref noiseLength);
     }
 
