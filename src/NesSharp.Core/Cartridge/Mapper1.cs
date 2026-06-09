@@ -49,6 +49,8 @@ public sealed class Mapper1 : IMapper
         }
     }
 
+    public ReadOnlySpan<byte> SaveRam => prgRam;
+
     public byte CpuRead(ushort address)
     {
         return address switch
@@ -112,6 +114,11 @@ public sealed class Mapper1 : IMapper
         }
 
         chrMemory[MapChrAddress(address)] = value;
+    }
+
+    public void LoadSaveRam(ReadOnlySpan<byte> data)
+    {
+        data[..Math.Min(data.Length, prgRam.Length)].CopyTo(prgRam);
     }
 
     private bool IsPrgRamEnabled => (prgBank & 0x10) == 0;

@@ -183,7 +183,7 @@ Frontend features:
 - Keyboard/controller input mapping.
 - Audio device selection and latency controls.
 - Pause, reset, power cycle.
-- Save RAM persistence.
+- Save RAM persistence. Implemented for battery-backed cartridges in the desktop host.
 - Save states.
 
 Debugger features:

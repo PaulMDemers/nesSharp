@@ -17,6 +17,7 @@ internal sealed class EmulatorForm : Form
 
     private NesMachine? machine;
     private string? romPath;
+    private string? savePath;
     private ControllerButton controllerState;
 
     public EmulatorForm(IReadOnlyList<string> args)
@@ -94,11 +95,18 @@ internal sealed class EmulatorForm : Form
     {
         if (disposing)
         {
+            SaveCurrentBatteryRam();
             emulationTimer.Dispose();
             display.Dispose();
         }
 
         base.Dispose(disposing);
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        SaveCurrentBatteryRam();
+        base.OnFormClosing(e);
     }
 
     private MenuStrip BuildMenu()
@@ -144,9 +152,16 @@ internal sealed class EmulatorForm : Form
         try
         {
             emulationTimer.Stop();
-            machine = NesMachine.LoadFile(path);
-            machine.Reset();
+            SaveCurrentBatteryRam();
+
+            var loadedMachine = NesMachine.LoadFile(path);
+            loadedMachine.Reset();
+            var loadedSavePath = Path.ChangeExtension(path, ".sav");
+            LoadBatteryRam(loadedMachine, loadedSavePath);
+
+            machine = loadedMachine;
             romPath = path;
+            savePath = loadedSavePath;
             controllerState = 0;
             machine.Controller1.State = controllerState;
             pauseMenuItem.Checked = false;
@@ -168,6 +183,7 @@ internal sealed class EmulatorForm : Form
             return;
         }
 
+        SaveCurrentBatteryRam();
         machine.Reset();
         controllerState = 0;
         machine.Controller1.State = controllerState;
@@ -218,6 +234,40 @@ internal sealed class EmulatorForm : Form
         var state = pauseMenuItem.Checked ? "paused" : "running";
         var limited = frameLimited ? " - frame budget reached" : string.Empty;
         statusLabel.Text = $"{Path.GetFileName(romPath)} - frame {machine!.PpuBus.Frame} - {state}{limited}";
+    }
+
+    private void LoadBatteryRam(NesMachine loadedMachine, string loadedSavePath)
+    {
+        if (!loadedMachine.Cartridge.HasBatteryBackedSaveRam || !File.Exists(loadedSavePath))
+        {
+            return;
+        }
+
+        var data = File.ReadAllBytes(loadedSavePath);
+        loadedMachine.Cartridge.LoadSaveRam(data);
+    }
+
+    private void SaveCurrentBatteryRam()
+    {
+        if (machine is null || savePath is null || !machine.Cartridge.HasBatteryBackedSaveRam)
+        {
+            return;
+        }
+
+        try
+        {
+            var directory = Path.GetDirectoryName(savePath);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllBytes(savePath, machine.Cartridge.SaveRam.ToArray());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            statusLabel.Text = $"Could not write save file: {ex.Message}";
+        }
     }
 
     private bool SetControllerButton(Keys key, bool pressed)

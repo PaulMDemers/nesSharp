@@ -20,6 +20,10 @@ public sealed class Cartridge
 
     public MirroringMode CurrentMirroringMode => Mapper.CurrentMirroringMode;
 
+    public bool HasBatteryBackedSaveRam => Header.HasBatteryBackedRam && SaveRam.Length > 0;
+
+    public ReadOnlySpan<byte> SaveRam => Mapper.SaveRam;
+
     public byte CpuRead(ushort address) => Mapper.CpuRead(address);
 
     public void CpuWrite(ushort address, byte value) => Mapper.CpuWrite(address, value);
@@ -27,4 +31,6 @@ public sealed class Cartridge
     public byte PpuRead(ushort address) => Mapper.PpuRead(address);
 
     public void PpuWrite(ushort address, byte value) => Mapper.PpuWrite(address, value);
+
+    public void LoadSaveRam(ReadOnlySpan<byte> data) => Mapper.LoadSaveRam(data);
 }

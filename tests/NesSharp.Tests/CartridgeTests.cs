@@ -99,6 +99,44 @@ public sealed class CartridgeTests
     }
 
     [Fact]
+    public void ExposesBatteryBackedSaveRamWhenHeaderBatteryBitIsSet()
+    {
+        var rom = CreateRom(prgBanks: 1, chrBanks: 1, hasBattery: true);
+        var cartridge = INesRomLoader.Load(rom);
+
+        cartridge.CpuWrite(0x6000, 0xC5);
+
+        Assert.True(cartridge.HasBatteryBackedSaveRam);
+        Assert.Equal(8 * 1024, cartridge.SaveRam.Length);
+        Assert.Equal(0xC5, cartridge.SaveRam[0]);
+    }
+
+    [Fact]
+    public void DoesNotTreatPlainPrgRamAsPersistentSaveRam()
+    {
+        var rom = CreateRom(prgBanks: 1, chrBanks: 1);
+        var cartridge = INesRomLoader.Load(rom);
+
+        Assert.False(cartridge.HasBatteryBackedSaveRam);
+        Assert.Equal(8 * 1024, cartridge.SaveRam.Length);
+    }
+
+    [Fact]
+    public void LoadsSaveRamIntoMapperPrgRam()
+    {
+        var rom = CreateRom(prgBanks: 2, chrBanks: 0, mapper: 2, hasBattery: true);
+        var cartridge = INesRomLoader.Load(rom);
+        var saveRam = new byte[8 * 1024];
+        saveRam[0] = 0xA1;
+        saveRam[^1] = 0x1A;
+
+        cartridge.LoadSaveRam(saveRam);
+
+        Assert.Equal(0xA1, cartridge.CpuRead(0x6000));
+        Assert.Equal(0x1A, cartridge.CpuRead(0x7FFF));
+    }
+
+    [Fact]
     public void RejectsUnsupportedMapper()
     {
         var rom = CreateRom(prgBanks: 1, chrBanks: 1, mapper: 4);
@@ -363,7 +401,8 @@ public sealed class CartridgeTests
         byte chrBanks,
         bool hasTrainer = false,
         byte mapper = 0,
-        bool verticalMirroring = false)
+        bool verticalMirroring = false,
+        bool hasBattery = false)
     {
         var trainerSize = hasTrainer ? 512 : 0;
         var rom = new byte[16 + trainerSize + prgBanks * 16 * 1024 + chrBanks * 8 * 1024];
@@ -373,7 +412,11 @@ public sealed class CartridgeTests
         rom[3] = 0x1A;
         rom[4] = prgBanks;
         rom[5] = chrBanks;
-        rom[6] = (byte)((mapper << 4) | (hasTrainer ? 0b0000_0100 : 0) | (verticalMirroring ? 0b0000_0001 : 0));
+        rom[6] = (byte)(
+            (mapper << 4) |
+            (hasTrainer ? 0b0000_0100 : 0) |
+            (hasBattery ? 0b0000_0010 : 0) |
+            (verticalMirroring ? 0b0000_0001 : 0));
         return rom;
     }
 

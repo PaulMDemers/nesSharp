@@ -22,6 +22,8 @@ public sealed class Mapper0 : IMapper
 
     public MirroringMode CurrentMirroringMode => header.MirroringMode;
 
+    public ReadOnlySpan<byte> SaveRam => prgRam;
+
     public byte CpuRead(ushort address)
     {
         return address switch
@@ -58,6 +60,11 @@ public sealed class Mapper0 : IMapper
         }
 
         chrMemory[address % chrMemory.Length] = value;
+    }
+
+    public void LoadSaveRam(ReadOnlySpan<byte> data)
+    {
+        data[..Math.Min(data.Length, prgRam.Length)].CopyTo(prgRam);
     }
 
     private int MapPrgRomAddress(ushort address)
