@@ -1,6 +1,6 @@
 # nesSharp
 
-A C# NES emulator project, currently in the first implementation milestone: cartridge loading, Mapper 0, CPU/bus scaffolding, and a headless test foundation.
+A C# NES emulator project with a headless test harness, early desktop host, CPU coverage, pragmatic PPU rendering, and initial common mapper support.
 
 ## Current Commands
 
@@ -22,6 +22,7 @@ Desktop controller 1 mapping: `Z` = A, `X` = B, `Backspace` = Select, `Enter` = 
 - Parses iNES headers.
 - Loads Mapper 0 / NROM cartridges.
 - Supports NROM PRG mirroring, CHR ROM, CHR RAM, trainer skipping, and PRG RAM at `$6000-$7FFF`.
+- Supports Mapper 1 / MMC1 serial register writes, PRG/CHR bank switching, PRG RAM enable, and switchable nametable mirroring for common SxROM games.
 - Supports Mapper 3 / CNROM fixed PRG with switchable 8 KB CHR banks.
 - Provides a CPU bus shell with internal RAM mirroring, PPU register mirroring, and cartridge space.
 - Provides a CPU reset skeleton that reads the reset vector from cartridge ROM.

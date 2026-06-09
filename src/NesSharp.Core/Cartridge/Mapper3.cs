@@ -24,6 +24,8 @@ public sealed class Mapper3 : IMapper
         prgRam = new byte[header.PrgRamSize];
     }
 
+    public MirroringMode CurrentMirroringMode => header.MirroringMode;
+
     public byte CpuRead(ushort address)
     {
         return address switch

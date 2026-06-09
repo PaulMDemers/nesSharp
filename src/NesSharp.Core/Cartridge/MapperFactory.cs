@@ -7,9 +7,9 @@ public static class MapperFactory
         return header.MapperNumber switch
         {
             0 => new Mapper0(header, prgRom, chrMemory),
+            1 => new Mapper1(header, prgRom, chrMemory),
             3 => new Mapper3(header, prgRom, chrMemory),
             _ => throw new NotSupportedException($"Mapper {header.MapperNumber} is not implemented yet.")
         };
     }
 }
-

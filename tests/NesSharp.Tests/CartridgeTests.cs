@@ -101,19 +101,17 @@ public sealed class CartridgeTests
     [Fact]
     public void RejectsUnsupportedMapper()
     {
-        var rom = CreateRom(prgBanks: 1, chrBanks: 1);
-        rom[6] = 0x10;
+        var rom = CreateRom(prgBanks: 1, chrBanks: 1, mapper: 2);
 
         var ex = Assert.Throws<NotSupportedException>(() => INesRomLoader.Load(rom));
 
-        Assert.Contains("Mapper 1", ex.Message);
+        Assert.Contains("Mapper 2", ex.Message);
     }
 
     [Fact]
     public void Mapper3SwitchesChrBanks()
     {
-        var rom = CreateRom(prgBanks: 2, chrBanks: 2);
-        rom[6] = 0x30;
+        var rom = CreateRom(prgBanks: 2, chrBanks: 2, mapper: 3);
         var chrOffset = 16 + 2 * 16 * 1024;
         rom[chrOffset] = 0x11;
         rom[chrOffset + 8 * 1024] = 0x22;
@@ -129,6 +127,112 @@ public sealed class CartridgeTests
     }
 
     [Fact]
+    public void Mapper1StartsWithLastPrgBankFixedAtC000()
+    {
+        var rom = CreateRom(prgBanks: 4, chrBanks: 1, mapper: 1);
+        SetPrgBankMarker(rom, bank: 0, 0x10);
+        SetPrgBankMarker(rom, bank: 3, 0x13);
+
+        var cartridge = INesRomLoader.Load(rom);
+
+        Assert.Equal(1, cartridge.Header.MapperNumber);
+        Assert.Equal(0x10, cartridge.CpuRead(0x8000));
+        Assert.Equal(0x13, cartridge.CpuRead(0xC000));
+    }
+
+    [Fact]
+    public void Mapper1SwitchesPrgBankAtEightThousandInModeThree()
+    {
+        var rom = CreateRom(prgBanks: 4, chrBanks: 1, mapper: 1);
+        SetPrgBankMarker(rom, bank: 2, 0x12);
+        SetPrgBankMarker(rom, bank: 3, 0x13);
+        var cartridge = INesRomLoader.Load(rom);
+
+        WriteMapper1Register(cartridge, 0xE000, 0x02);
+
+        Assert.Equal(0x12, cartridge.CpuRead(0x8000));
+        Assert.Equal(0x13, cartridge.CpuRead(0xC000));
+    }
+
+    [Fact]
+    public void Mapper1SupportsFixedFirstPrgBankMode()
+    {
+        var rom = CreateRom(prgBanks: 4, chrBanks: 1, mapper: 1);
+        SetPrgBankMarker(rom, bank: 0, 0x10);
+        SetPrgBankMarker(rom, bank: 2, 0x12);
+        var cartridge = INesRomLoader.Load(rom);
+
+        WriteMapper1Register(cartridge, 0x8000, 0x08);
+        WriteMapper1Register(cartridge, 0xE000, 0x02);
+
+        Assert.Equal(0x10, cartridge.CpuRead(0x8000));
+        Assert.Equal(0x12, cartridge.CpuRead(0xC000));
+    }
+
+    [Fact]
+    public void Mapper1SupportsThirtyTwoKilobytePrgBankMode()
+    {
+        var rom = CreateRom(prgBanks: 4, chrBanks: 1, mapper: 1);
+        SetPrgBankMarker(rom, bank: 2, 0x12);
+        SetPrgBankMarker(rom, bank: 3, 0x13);
+        var cartridge = INesRomLoader.Load(rom);
+
+        WriteMapper1Register(cartridge, 0x8000, 0x00);
+        WriteMapper1Register(cartridge, 0xE000, 0x03);
+
+        Assert.Equal(0x12, cartridge.CpuRead(0x8000));
+        Assert.Equal(0x13, cartridge.CpuRead(0xC000));
+    }
+
+    [Fact]
+    public void Mapper1SwitchesSeparateFourKilobyteChrBanks()
+    {
+        var rom = CreateRom(prgBanks: 2, chrBanks: 2, mapper: 1);
+        SetChrBankMarker(rom, prgBanks: 2, bank: 2, 0x22);
+        SetChrBankMarker(rom, prgBanks: 2, bank: 3, 0x23);
+        var cartridge = INesRomLoader.Load(rom);
+
+        WriteMapper1Register(cartridge, 0x8000, 0x10);
+        WriteMapper1Register(cartridge, 0xA000, 0x02);
+        WriteMapper1Register(cartridge, 0xC000, 0x03);
+
+        Assert.Equal(0x22, cartridge.PpuRead(0x0000));
+        Assert.Equal(0x23, cartridge.PpuRead(0x1000));
+    }
+
+    [Fact]
+    public void Mapper1CanDisablePrgRam()
+    {
+        var rom = CreateRom(prgBanks: 2, chrBanks: 1, mapper: 1);
+        var cartridge = INesRomLoader.Load(rom);
+        cartridge.CpuWrite(0x6000, 0x5A);
+
+        WriteMapper1Register(cartridge, 0xE000, 0x10);
+        cartridge.CpuWrite(0x6000, 0xA5);
+
+        Assert.Equal(0, cartridge.CpuRead(0x6000));
+
+        WriteMapper1Register(cartridge, 0xE000, 0x00);
+
+        Assert.Equal(0x5A, cartridge.CpuRead(0x6000));
+    }
+
+    [Theory]
+    [InlineData(0, MirroringMode.OneScreenLower)]
+    [InlineData(1, MirroringMode.OneScreenUpper)]
+    [InlineData(2, MirroringMode.Vertical)]
+    [InlineData(3, MirroringMode.Horizontal)]
+    public void Mapper1SwitchesMirroring(int controlValue, MirroringMode expected)
+    {
+        var rom = CreateRom(prgBanks: 2, chrBanks: 1, mapper: 1);
+        var cartridge = INesRomLoader.Load(rom);
+
+        WriteMapper1Register(cartridge, 0x8000, (byte)controlValue);
+
+        Assert.Equal(expected, cartridge.CurrentMirroringMode);
+    }
+
+    [Fact]
     public void RejectsInvalidMagic()
     {
         var rom = CreateRom(prgBanks: 1, chrBanks: 1);
@@ -137,7 +241,7 @@ public sealed class CartridgeTests
         Assert.Throws<InvalidRomException>(() => INesRomLoader.Load(rom));
     }
 
-    private static byte[] CreateRom(byte prgBanks, byte chrBanks, bool hasTrainer = false)
+    private static byte[] CreateRom(byte prgBanks, byte chrBanks, bool hasTrainer = false, byte mapper = 0)
     {
         var trainerSize = hasTrainer ? 512 : 0;
         var rom = new byte[16 + trainerSize + prgBanks * 16 * 1024 + chrBanks * 8 * 1024];
@@ -147,8 +251,26 @@ public sealed class CartridgeTests
         rom[3] = 0x1A;
         rom[4] = prgBanks;
         rom[5] = chrBanks;
-        rom[6] = hasTrainer ? (byte)0b0000_0100 : (byte)0;
+        rom[6] = (byte)((mapper << 4) | (hasTrainer ? 0b0000_0100 : 0));
         return rom;
+    }
+
+    private static void SetPrgBankMarker(byte[] rom, int bank, byte value)
+    {
+        rom[16 + bank * 16 * 1024] = value;
+    }
+
+    private static void SetChrBankMarker(byte[] rom, int prgBanks, int bank, byte value)
+    {
+        rom[16 + prgBanks * 16 * 1024 + bank * 4 * 1024] = value;
+    }
+
+    private static void WriteMapper1Register(Cartridge cartridge, ushort address, byte value)
+    {
+        for (var i = 0; i < 5; i++)
+        {
+            cartridge.CpuWrite(address, (byte)((value >> i) & 0x01));
+        }
     }
 
     private static string TestRomPath(params string[] parts)

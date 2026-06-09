@@ -20,6 +20,8 @@ public sealed class Mapper0 : IMapper
         prgRam = new byte[header.PrgRamSize];
     }
 
+    public MirroringMode CurrentMirroringMode => header.MirroringMode;
+
     public byte CpuRead(ushort address)
     {
         return address switch
@@ -64,4 +66,3 @@ public sealed class Mapper0 : IMapper
         return header.PrgRomBanks == 1 ? offset % 0x4000 : offset;
     }
 }
-

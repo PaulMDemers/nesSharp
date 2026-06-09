@@ -157,8 +157,8 @@ Deliverable: CPU-visible APU tests pass, and audio playback is good enough for c
 After NROM is stable, add mappers by compatibility payoff:
 
 1. Mapper 2 / UNROM / UOROM.
-2. Mapper 3 / CNROM.
-3. Mapper 1 / MMC1.
+2. Mapper 3 / CNROM. Implemented.
+3. Mapper 1 / MMC1. Initial common SxROM behavior implemented.
 4. Mapper 7 / AxROM.
 5. Mapper 4 / MMC3.
 
@@ -233,4 +233,3 @@ The first "real" success checkpoint:
 - The CLI can run these in one command and return nonzero on failure.
 
 That gives us a stable core to build PPU and APU work on top of.
-

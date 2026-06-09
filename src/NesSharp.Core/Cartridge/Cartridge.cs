@@ -18,6 +18,8 @@ public sealed class Cartridge
 
     public IMapper Mapper { get; }
 
+    public MirroringMode CurrentMirroringMode => Mapper.CurrentMirroringMode;
+
     public byte CpuRead(ushort address) => Mapper.CpuRead(address);
 
     public void CpuWrite(ushort address, byte value) => Mapper.CpuWrite(address, value);
@@ -26,4 +28,3 @@ public sealed class Cartridge
 
     public void PpuWrite(ushort address, byte value) => Mapper.PpuWrite(address, value);
 }
-

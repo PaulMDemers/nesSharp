@@ -392,8 +392,10 @@ public sealed class PpuBus
         var offset = (address - 0x2000) & 0x0FFF;
         var table = offset / 0x0400;
         var inner = offset & 0x03FF;
-        var physicalTable = cartridge.Header.MirroringMode switch
+        var physicalTable = cartridge.CurrentMirroringMode switch
         {
+            MirroringMode.OneScreenLower => 0,
+            MirroringMode.OneScreenUpper => 1,
             MirroringMode.Vertical => table & 0x01,
             MirroringMode.Horizontal => table >> 1,
             MirroringMode.FourScreen => table & 0x01,

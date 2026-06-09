@@ -2,6 +2,8 @@ namespace NesSharp.Core.Cartridge;
 
 public interface IMapper
 {
+    MirroringMode CurrentMirroringMode { get; }
+
     byte CpuRead(ushort address);
 
     void CpuWrite(ushort address, byte value);
@@ -10,4 +12,3 @@ public interface IMapper
 
     void PpuWrite(ushort address, byte value);
 }
-
