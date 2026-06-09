@@ -31,6 +31,8 @@ public sealed class ApuBus
 
     public byte FrameCounterControl => frameCounterControl;
 
+    public bool IsFrameInterruptPending => frameInterrupt;
+
     public byte StatusEnable => statusEnable;
 
     public void Reset()

@@ -48,7 +48,7 @@ public sealed class CpuBusTests
     [Fact]
     public void CpuNmiPushesStateAndJumpsToNmiVector()
     {
-        var bus = new CpuBus(CreateCartridgeWithResetAndNmiVectors(resetVector: 0x8000, nmiVector: 0x9000));
+        var bus = new CpuBus(CreateCartridgeWithVectors(resetVector: 0x8000, nmiVector: 0x9000));
         var cpu = new Cpu6502(bus);
         cpu.Reset();
         cpu.SetProgramCounter(0x8123);
@@ -67,12 +67,69 @@ public sealed class CpuBusTests
         Assert.Equal(107UL, cpu.Cycles);
     }
 
-    private static Cartridge CreateCartridgeWithResetVector(ushort resetVector = 0x8000)
+    [Fact]
+    public void CpuIrqIsIgnoredWhileInterruptDisableFlagIsSet()
     {
-        return CreateCartridgeWithResetAndNmiVectors(resetVector, 0x8000);
+        var bus = new CpuBus(CreateCartridgeWithVectors(resetVector: 0x8000, irqVector: 0x9000));
+        var cpu = new Cpu6502(bus);
+        cpu.Reset();
+
+        cpu.RequestIrq();
+        var cycles = cpu.Step();
+
+        Assert.Equal(2, cycles);
+        Assert.Equal(0x8001, cpu.ProgramCounter);
+        Assert.Equal((byte)(ProcessorStatus.Unused | ProcessorStatus.InterruptDisable), cpu.Status);
     }
 
-    private static Cartridge CreateCartridgeWithResetAndNmiVectors(ushort resetVector, ushort nmiVector)
+    [Fact]
+    public void CpuIrqPushesStateAndJumpsToIrqVectorWhenInterruptsAreEnabled()
+    {
+        var bus = new CpuBus(CreateCartridgeWithVectors(resetVector: 0x8000, irqVector: 0x9000, firstOpcode: 0x58));
+        var cpu = new Cpu6502(bus);
+        cpu.Reset();
+        cpu.Step();
+        cpu.SetProgramCounter(0x8123);
+        cpu.SetCycles(100);
+
+        cpu.RequestIrq();
+        var cycles = cpu.Step();
+
+        Assert.Equal(7, cycles);
+        Assert.Equal(0x9000, cpu.ProgramCounter);
+        Assert.Equal(0xFA, cpu.StackPointer);
+        Assert.Equal((byte)0x81, bus.Read(0x01FD));
+        Assert.Equal((byte)0x23, bus.Read(0x01FC));
+        Assert.Equal((byte)ProcessorStatus.Unused, bus.Read(0x01FB));
+        Assert.Equal((byte)(ProcessorStatus.Unused | ProcessorStatus.InterruptDisable), cpu.Status);
+        Assert.Equal(107UL, cpu.Cycles);
+    }
+
+    [Fact]
+    public void CpuNmiTakesPriorityOverPendingIrq()
+    {
+        var bus = new CpuBus(CreateCartridgeWithVectors(resetVector: 0x8000, nmiVector: 0x9000, irqVector: 0xA000));
+        var cpu = new Cpu6502(bus);
+        cpu.Reset();
+        cpu.SetProgramCounter(0x8123);
+
+        cpu.RequestIrq();
+        cpu.RequestNmi();
+        cpu.Step();
+
+        Assert.Equal(0x9000, cpu.ProgramCounter);
+    }
+
+    private static Cartridge CreateCartridgeWithResetVector(ushort resetVector = 0x8000)
+    {
+        return CreateCartridgeWithVectors(resetVector);
+    }
+
+    private static Cartridge CreateCartridgeWithVectors(
+        ushort resetVector,
+        ushort nmiVector = 0x8000,
+        ushort irqVector = 0x8000,
+        byte firstOpcode = 0xEA)
     {
         var rom = new byte[16 + 16 * 1024 + 8 * 1024];
         rom[0] = (byte)'N';
@@ -81,6 +138,7 @@ public sealed class CpuBusTests
         rom[3] = 0x1A;
         rom[4] = 1;
         rom[5] = 1;
+        rom[16] = firstOpcode;
 
         var nmiVectorOffset = 16 + 0x3FFA;
         rom[nmiVectorOffset] = (byte)(nmiVector & 0x00FF);
@@ -89,6 +147,10 @@ public sealed class CpuBusTests
         var resetVectorOffset = 16 + 0x3FFC;
         rom[resetVectorOffset] = (byte)(resetVector & 0x00FF);
         rom[resetVectorOffset + 1] = (byte)(resetVector >> 8);
+
+        var irqVectorOffset = 16 + 0x3FFE;
+        rom[irqVectorOffset] = (byte)(irqVector & 0x00FF);
+        rom[irqVectorOffset + 1] = (byte)(irqVector >> 8);
 
         return INesRomLoader.Load(rom);
     }

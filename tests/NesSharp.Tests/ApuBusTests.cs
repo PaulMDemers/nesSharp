@@ -91,7 +91,7 @@ public sealed class ApuBusTests
     [Fact]
     public void NesMachineClocksApuDuringCpuExecution()
     {
-        var machine = new NesMachine(CreateInfiniteNopCartridge());
+        var machine = new NesMachine(CreateLoopCartridge());
         machine.Reset();
 
         for (var i = 0; i < 15_000; i++)
@@ -100,6 +100,36 @@ public sealed class ApuBusTests
         }
 
         Assert.Equal(0x40, machine.CpuBus.ApuBus.ReadStatus() & 0x40);
+    }
+
+    [Fact]
+    public void ApuFrameInterruptRequestsCpuIrq()
+    {
+        var machine = new NesMachine(CreateLoopCartridge(irqVector: 0x9000));
+        machine.Reset();
+
+        for (var i = 0; i < 20_000 && machine.Cpu.ProgramCounter != 0x9000; i++)
+        {
+            machine.StepInstruction();
+        }
+
+        Assert.Equal(0x9000, machine.Cpu.ProgramCounter);
+    }
+
+    [Fact]
+    public void ApuFrameIrqInhibitPreventsCpuIrq()
+    {
+        var machine = new NesMachine(CreateLoopCartridge(irqVector: 0x9000));
+        machine.Reset();
+        machine.CpuBus.Write(0x4017, 0x40);
+
+        for (var i = 0; i < 20_000; i++)
+        {
+            machine.StepInstruction();
+        }
+
+        Assert.NotEqual(0x9000, machine.Cpu.ProgramCounter);
+        Assert.Equal(0x00, machine.CpuBus.ApuBus.ReadStatus() & 0x40);
     }
 
     private static Cartridge CreateCartridge()
@@ -114,7 +144,7 @@ public sealed class ApuBusTests
         return INesRomLoader.Load(rom);
     }
 
-    private static Cartridge CreateInfiniteNopCartridge()
+    private static Cartridge CreateLoopCartridge(ushort irqVector = 0x8000)
     {
         var rom = new byte[16 + 16 * 1024 + 8 * 1024];
         rom[0] = (byte)'N';
@@ -125,12 +155,16 @@ public sealed class ApuBusTests
         rom[5] = 1;
 
         var prgOffset = 16;
-        rom[prgOffset] = 0xEA;
-        rom[prgOffset + 1] = 0x4C;
-        rom[prgOffset + 2] = 0x00;
-        rom[prgOffset + 3] = 0x80;
+        rom[prgOffset] = 0x58;
+        rom[prgOffset + 1] = 0xEA;
+        rom[prgOffset + 2] = 0x4C;
+        rom[prgOffset + 3] = 0x01;
+        rom[prgOffset + 4] = 0x80;
+        rom[prgOffset + 0x1000] = 0xEA;
         rom[prgOffset + 0x3FFC] = 0x00;
         rom[prgOffset + 0x3FFD] = 0x80;
+        rom[prgOffset + 0x3FFE] = (byte)(irqVector & 0x00FF);
+        rom[prgOffset + 0x3FFF] = (byte)(irqVector >> 8);
 
         return INesRomLoader.Load(rom);
     }

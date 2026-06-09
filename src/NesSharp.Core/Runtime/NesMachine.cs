@@ -60,6 +60,15 @@ public sealed class NesMachine
     private void ClockOneCpuCycle()
     {
         CpuBus.ApuBus.Clock();
+        if (CpuBus.ApuBus.IsFrameInterruptPending)
+        {
+            Cpu.RequestIrq();
+        }
+        else
+        {
+            Cpu.ClearPendingIrq();
+        }
+
         PpuBus.Clock(3);
         if (PpuBus.PollNmi())
         {

@@ -15,6 +15,7 @@ public sealed class Cpu6502
 
     private readonly CpuBus bus;
     private bool nmiRequested;
+    private bool irqRequested;
 
     public Cpu6502(CpuBus bus)
     {
@@ -38,6 +39,7 @@ public sealed class Cpu6502
     public void Reset()
     {
         nmiRequested = false;
+        irqRequested = false;
         A = 0;
         X = 0;
         Y = 0;
@@ -55,6 +57,16 @@ public sealed class Cpu6502
     public void ClearPendingNmi()
     {
         nmiRequested = false;
+    }
+
+    public void RequestIrq()
+    {
+        irqRequested = true;
+    }
+
+    public void ClearPendingIrq()
+    {
+        irqRequested = false;
     }
 
     public void SetProgramCounter(ushort programCounter)
@@ -100,6 +112,13 @@ public sealed class Cpu6502
         {
             nmiRequested = false;
             ServiceNmi();
+            Cycles += 7;
+            return 7;
+        }
+
+        if (irqRequested && (Status & InterruptDisableFlag) == 0)
+        {
+            ServiceIrq();
             Cycles += 7;
             return 7;
         }
@@ -529,6 +548,15 @@ public sealed class Cpu6502
         Push((byte)((Status & ~BreakFlag) | UnusedFlag));
         SetFlag(InterruptDisableFlag, true);
         ProgramCounter = bus.ReadWord(0xFFFA);
+    }
+
+    private void ServiceIrq()
+    {
+        Push((byte)(ProgramCounter >> 8));
+        Push((byte)(ProgramCounter & 0x00FF));
+        Push((byte)((Status & ~BreakFlag) | UnusedFlag));
+        SetFlag(InterruptDisableFlag, true);
+        ProgramCounter = bus.ReadWord(0xFFFE);
     }
 
     private void Push(byte value)
