@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/NesSharp.Cli/NesSharp.Cli.csproj" />
     <Project Path="src/NesSharp.Core/NesSharp.Core.csproj" />
+    <Project Path="src/NesSharp.Desktop/NesSharp.Desktop.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/NesSharp.Tests/NesSharp.Tests.csproj" />
