@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using NesSharp.Core.Cartridge;
 using NesSharp.Core.Input;
 using NesSharp.Core.Runtime;
@@ -7,18 +8,21 @@ namespace NesSharp.Desktop;
 internal sealed class EmulatorForm : Form
 {
     private const int TargetFrameMilliseconds = 16;
-    private const long MaxInstructionsPerTick = 500_000;
+    private const long MaxInstructionsPerFrame = 500_000;
 
     private readonly NesDisplayControl display = new();
     private readonly ToolStripStatusLabel statusLabel = new();
     private readonly ToolStripMenuItem resetMenuItem = new("&Reset");
     private readonly ToolStripMenuItem pauseMenuItem = new("&Pause") { CheckOnClick = true };
-    private readonly System.Windows.Forms.Timer emulationTimer = new() { Interval = TargetFrameMilliseconds };
+    private readonly Lock machineLock = new();
 
     private NesMachine? machine;
     private string? romPath;
     private string? savePath;
     private ControllerButton controllerState;
+    private CancellationTokenSource? emulationCancellation;
+    private Task? emulationTask;
+    private int pendingFramePresentations;
 
     public EmulatorForm(IReadOnlyList<string> args)
     {
@@ -39,7 +43,6 @@ internal sealed class EmulatorForm : Form
         Controls.Add(menuStrip);
         MainMenuStrip = menuStrip;
 
-        emulationTimer.Tick += (_, _) => RunOneFrame();
         UpdateUiState();
 
         if (args.Count > 0)
@@ -95,8 +98,8 @@ internal sealed class EmulatorForm : Form
     {
         if (disposing)
         {
+            StopEmulationLoop();
             SaveCurrentBatteryRam();
-            emulationTimer.Dispose();
             display.Dispose();
         }
 
@@ -105,6 +108,7 @@ internal sealed class EmulatorForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
+        StopEmulationLoop();
         SaveCurrentBatteryRam();
         base.OnFormClosing(e);
     }
@@ -115,7 +119,19 @@ internal sealed class EmulatorForm : Form
         resetMenuItem.ShortcutKeys = Keys.Control | Keys.R;
         resetMenuItem.Click += (_, _) => ResetMachine();
         pauseMenuItem.ShortcutKeys = Keys.Space;
-        pauseMenuItem.CheckedChanged += (_, _) => UpdateUiState();
+        pauseMenuItem.CheckedChanged += (_, _) =>
+        {
+            if (pauseMenuItem.Checked)
+            {
+                StopEmulationLoop();
+            }
+            else
+            {
+                StartEmulationLoop();
+            }
+
+            UpdateUiState();
+        };
 
         var fileMenu = new ToolStripMenuItem("&File");
         fileMenu.DropDownItems.Add(openMenuItem);
@@ -151,7 +167,7 @@ internal sealed class EmulatorForm : Form
     {
         try
         {
-            emulationTimer.Stop();
+            StopEmulationLoop();
             SaveCurrentBatteryRam();
 
             var loadedMachine = NesMachine.LoadFile(path);
@@ -167,7 +183,7 @@ internal sealed class EmulatorForm : Form
             pauseMenuItem.Checked = false;
             display.UpdateFrame(machine.PpuBus.Framebuffer);
             UpdateUiState();
-            emulationTimer.Start();
+            StartEmulationLoop();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidRomException or NotSupportedException)
         {
@@ -183,43 +199,177 @@ internal sealed class EmulatorForm : Form
             return;
         }
 
+        StopEmulationLoop();
         SaveCurrentBatteryRam();
-        machine.Reset();
-        controllerState = 0;
-        machine.Controller1.State = controllerState;
-        display.UpdateFrame(machine.PpuBus.Framebuffer);
+        lock (machineLock)
+        {
+            machine.Reset();
+            controllerState = 0;
+            machine.Controller1.State = controllerState;
+            display.UpdateFrame(machine.PpuBus.Framebuffer);
+        }
+
         UpdateUiState();
+        if (!pauseMenuItem.Checked)
+        {
+            StartEmulationLoop();
+        }
     }
 
-    private void RunOneFrame()
+    private void StartEmulationLoop()
     {
-        if (machine is null || pauseMenuItem.Checked)
+        if (machine is null || pauseMenuItem.Checked || emulationTask is { IsCompleted: false })
         {
             return;
         }
 
-        var startFrame = machine.PpuBus.Frame;
-        long instructions = 0;
-        try
-        {
-            while (machine.PpuBus.Frame == startFrame && instructions < MaxInstructionsPerTick)
-            {
-                machine.StepInstruction();
-                instructions++;
-            }
-        }
-        catch (Exception ex)
-        {
-            emulationTimer.Stop();
-            pauseMenuItem.Checked = true;
-            MessageBox.Show(this, ex.Message, "Emulation stopped", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
-
-        display.UpdateFrame(machine.PpuBus.Framebuffer);
-        UpdateUiState(instructions >= MaxInstructionsPerTick);
+        emulationCancellation = new CancellationTokenSource();
+        var token = emulationCancellation.Token;
+        emulationTask = Task.Run(() => RunEmulationLoop(token), token);
     }
 
-    private void UpdateUiState(bool frameLimited = false)
+    private void StopEmulationLoop()
+    {
+        var cancellation = emulationCancellation;
+        if (cancellation is null)
+        {
+            return;
+        }
+
+        emulationCancellation = null;
+        cancellation.Cancel();
+        try
+        {
+            emulationTask?.Wait(TimeSpan.FromSeconds(2));
+        }
+        catch (AggregateException ex) when (ex.InnerExceptions.All(inner => inner is TaskCanceledException or OperationCanceledException))
+        {
+        }
+        finally
+        {
+            cancellation.Dispose();
+            emulationTask = null;
+        }
+    }
+
+    private void RunEmulationLoop(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            var frameStartedAt = Stopwatch.GetTimestamp();
+            var framebuffer = new byte[NesDisplayControl.NesWidth * NesDisplayControl.NesHeight];
+            ulong frame = 0;
+            var frameLimited = false;
+
+            try
+            {
+                lock (machineLock)
+                {
+                    if (machine is null)
+                    {
+                        return;
+                    }
+
+                    var startFrame = machine.PpuBus.Frame;
+                    long instructions = 0;
+                    while (machine.PpuBus.Frame == startFrame &&
+                        instructions < MaxInstructionsPerFrame &&
+                        !token.IsCancellationRequested)
+                    {
+                        machine.StepInstruction();
+                        instructions++;
+                    }
+
+                    machine.PpuBus.Framebuffer.CopyTo(framebuffer);
+                    frame = machine.PpuBus.Frame;
+                    frameLimited = instructions >= MaxInstructionsPerFrame;
+                }
+            }
+            catch (Exception ex)
+            {
+                PostEmulationError(ex);
+                return;
+            }
+
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            PostFrame(framebuffer, frame, frameLimited);
+            WaitForNextFrame(frameStartedAt, token);
+        }
+    }
+
+    private void PostFrame(byte[] framebuffer, ulong frame, bool frameLimited)
+    {
+        if (!IsHandleCreated || IsDisposed)
+        {
+            return;
+        }
+
+        if (Interlocked.Exchange(ref pendingFramePresentations, 1) == 1)
+        {
+            return;
+        }
+
+        try
+        {
+            BeginInvoke((MethodInvoker)(() =>
+            {
+                try
+                {
+                    if (IsDisposed)
+                    {
+                        return;
+                    }
+
+                    display.UpdateFrame(framebuffer);
+                    UpdateUiState(frameLimited, frame);
+                }
+                finally
+                {
+                    Volatile.Write(ref pendingFramePresentations, 0);
+                }
+            }));
+        }
+        catch (InvalidOperationException)
+        {
+            Volatile.Write(ref pendingFramePresentations, 0);
+        }
+    }
+
+    private void PostEmulationError(Exception ex)
+    {
+        if (!IsHandleCreated || IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            BeginInvoke((MethodInvoker)(() =>
+            {
+                pauseMenuItem.Checked = true;
+                MessageBox.Show(this, ex.Message, "Emulation stopped", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }));
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
+
+    private static void WaitForNextFrame(long frameStartedAt, CancellationToken token)
+    {
+        var elapsedMilliseconds = (Stopwatch.GetTimestamp() - frameStartedAt) * 1000.0 / Stopwatch.Frequency;
+        var remainingMilliseconds = TargetFrameMilliseconds - (int)Math.Ceiling(elapsedMilliseconds);
+        if (remainingMilliseconds > 0)
+        {
+            token.WaitHandle.WaitOne(remainingMilliseconds);
+        }
+    }
+
+    private void UpdateUiState(bool frameLimited = false, ulong? renderedFrame = null)
     {
         var hasRom = machine is not null;
         resetMenuItem.Enabled = hasRom;
@@ -233,7 +383,7 @@ internal sealed class EmulatorForm : Form
 
         var state = pauseMenuItem.Checked ? "paused" : "running";
         var limited = frameLimited ? " - frame budget reached" : string.Empty;
-        statusLabel.Text = $"{Path.GetFileName(romPath)} - frame {machine!.PpuBus.Frame} - {state}{limited}";
+        statusLabel.Text = $"{Path.GetFileName(romPath)} - frame {renderedFrame ?? machine!.PpuBus.Frame} - {state}{limited}";
     }
 
     private void LoadBatteryRam(NesMachine loadedMachine, string loadedSavePath)
@@ -249,20 +399,33 @@ internal sealed class EmulatorForm : Form
 
     private void SaveCurrentBatteryRam()
     {
-        if (machine is null || savePath is null || !machine.Cartridge.HasBatteryBackedSaveRam)
+        string? targetPath;
+        byte[] saveBytes;
+        lock (machineLock)
+        {
+            if (machine is null || savePath is null || !machine.Cartridge.HasBatteryBackedSaveRam)
+            {
+                return;
+            }
+
+            targetPath = savePath;
+            saveBytes = machine.Cartridge.SaveRam.ToArray();
+        }
+
+        if (targetPath is null)
         {
             return;
         }
 
         try
         {
-            var directory = Path.GetDirectoryName(savePath);
+            var directory = Path.GetDirectoryName(targetPath);
             if (!string.IsNullOrEmpty(directory))
             {
                 Directory.CreateDirectory(directory);
             }
 
-            File.WriteAllBytes(savePath, machine.Cartridge.SaveRam.ToArray());
+            File.WriteAllBytes(targetPath, saveBytes);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -282,9 +445,12 @@ internal sealed class EmulatorForm : Form
             ? controllerState | button.Value
             : controllerState & ~button.Value;
 
-        if (machine is not null)
+        lock (machineLock)
         {
-            machine.Controller1.State = controllerState;
+            if (machine is not null)
+            {
+                machine.Controller1.State = controllerState;
+            }
         }
 
         return true;

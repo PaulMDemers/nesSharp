@@ -45,6 +45,7 @@ Battery-backed saves are loaded from and written to a `.sav` file beside the ROM
 - Includes a deterministic RGB hash regression for `ppu_read_buffer` frame 120.
 - Implements standard controller strobe/read behavior on `$4016/$4017`.
 - Includes an initial WinForms desktop host with framebuffer display, ROM loading, reset/pause actions, and keyboard input for controller 1.
+- Runs desktop emulation on a background frame loop with UI-thread framebuffer presentation.
 - Passes `ppu_vbl_nmi` ROMs `01-vbl_basics`, `02-vbl_set_time`, `03-vbl_clear_time`, `04-nmi_control`, `06-suppression`, and `09-even_odd_frames`.
 - Passes `ppu_open_bus`, `ppu_read_buffer`, `oam_read`, and `oam_stress`.
 - Includes focused xUnit coverage using synthetic ROMs and the downloaded `nestest.nes`.
