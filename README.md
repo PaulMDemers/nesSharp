@@ -23,6 +23,7 @@ Desktop controller 1 mapping: `Z` = A, `X` = B, `Backspace` = Select, `Enter` = 
 - Loads Mapper 0 / NROM cartridges.
 - Supports NROM PRG mirroring, CHR ROM, CHR RAM, trainer skipping, and PRG RAM at `$6000-$7FFF`.
 - Supports Mapper 1 / MMC1 serial register writes, PRG/CHR bank switching, PRG RAM enable, and switchable nametable mirroring for common SxROM games.
+- Supports Mapper 2 / UxROM switchable 16 KB PRG banking, fixed last PRG bank, CHR RAM, and fixed header mirroring.
 - Supports Mapper 3 / CNROM fixed PRG with switchable 8 KB CHR banks.
 - Provides a CPU bus shell with internal RAM mirroring, PPU register mirroring, and cartridge space.
 - Provides a CPU reset skeleton that reads the reset vector from cartridge ROM.
