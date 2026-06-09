@@ -24,10 +24,12 @@ public sealed class ApuBus
     private bool frameInterrupt;
     private bool dmcInterrupt;
 
-    private byte pulse1Length;
-    private byte pulse2Length;
     private byte triangleLength;
     private byte noiseLength;
+
+    public ApuPulseChannel Pulse1 { get; } = new(onesComplementNegate: true);
+
+    public ApuPulseChannel Pulse2 { get; } = new(onesComplementNegate: false);
 
     public byte FrameCounterControl => frameCounterControl;
 
@@ -37,6 +39,8 @@ public sealed class ApuBus
 
     public void Reset()
     {
+        Pulse1.Reset();
+        Pulse2.Reset();
         WriteStatus(0);
         frameCounterControl = 0;
         frameCycle = 0;
@@ -87,8 +91,8 @@ public sealed class ApuBus
     public byte ReadStatus()
     {
         var value = (byte)(
-            (pulse1Length > 0 ? Pulse1Enable : 0) |
-            (pulse2Length > 0 ? Pulse2Enable : 0) |
+            (Pulse1.LengthCounter > 0 ? Pulse1Enable : 0) |
+            (Pulse2.LengthCounter > 0 ? Pulse2Enable : 0) |
             (triangleLength > 0 ? TriangleEnable : 0) |
             (noiseLength > 0 ? NoiseEnable : 0) |
             (frameInterrupt ? FrameInterruptStatus : 0) |
@@ -102,11 +106,29 @@ public sealed class ApuBus
     {
         switch (address)
         {
+            case 0x4000:
+                Pulse1.WriteControl(value);
+                break;
+            case 0x4001:
+                Pulse1.WriteSweep(value);
+                break;
+            case 0x4002:
+                Pulse1.WriteTimerLow(value);
+                break;
             case 0x4003:
-                LoadLengthCounter(ref pulse1Length, value, Pulse1Enable);
+                Pulse1.WriteTimerHigh(value, LengthCounterTable);
+                break;
+            case 0x4004:
+                Pulse2.WriteControl(value);
+                break;
+            case 0x4005:
+                Pulse2.WriteSweep(value);
+                break;
+            case 0x4006:
+                Pulse2.WriteTimerLow(value);
                 break;
             case 0x4007:
-                LoadLengthCounter(ref pulse2Length, value, Pulse2Enable);
+                Pulse2.WriteTimerHigh(value, LengthCounterTable);
                 break;
             case 0x400B:
                 LoadLengthCounter(ref triangleLength, value, TriangleEnable);
@@ -131,15 +153,8 @@ public sealed class ApuBus
     {
         statusEnable = (byte)(value & 0x1F);
         dmcInterrupt = false;
-        if ((statusEnable & Pulse1Enable) == 0)
-        {
-            pulse1Length = 0;
-        }
-
-        if ((statusEnable & Pulse2Enable) == 0)
-        {
-            pulse2Length = 0;
-        }
+        Pulse1.SetEnabled((statusEnable & Pulse1Enable) != 0);
+        Pulse2.SetEnabled((statusEnable & Pulse2Enable) != 0);
 
         if ((statusEnable & TriangleEnable) == 0)
         {
@@ -178,13 +193,17 @@ public sealed class ApuBus
 
     private void ClockQuarterFrame()
     {
-        // Envelope and triangle linear counter clocks land here once those units exist.
+        Pulse1.ClockEnvelope();
+        Pulse2.ClockEnvelope();
+        // Triangle linear counter clocks land here once that unit exists.
     }
 
     private void ClockHalfFrame()
     {
-        ClockLengthCounter(ref pulse1Length);
-        ClockLengthCounter(ref pulse2Length);
+        Pulse1.ClockLengthCounter();
+        Pulse2.ClockLengthCounter();
+        Pulse1.ClockSweep();
+        Pulse2.ClockSweep();
         ClockLengthCounter(ref triangleLength);
         ClockLengthCounter(ref noiseLength);
     }

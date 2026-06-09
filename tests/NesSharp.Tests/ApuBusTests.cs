@@ -19,6 +19,85 @@ public sealed class ApuBusTests
     }
 
     [Fact]
+    public void PulseControlRegisterCapturesDutyEnvelopeAndLengthHaltState()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x4000, 0b1011_0110);
+
+        Assert.Equal(2, apu.Pulse1.DutyCycle);
+        Assert.True(apu.Pulse1.LengthCounterHalt);
+        Assert.True(apu.Pulse1.ConstantVolume);
+        Assert.Equal(6, apu.Pulse1.EnvelopePeriod);
+        Assert.Equal(6, apu.Pulse1.EnvelopeOutput);
+    }
+
+    [Fact]
+    public void PulseTimerRegistersFormElevenBitPeriod()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x4002, 0xCD);
+        apu.WriteRegister(0x4003, 0x83);
+
+        Assert.Equal(0x03CD, apu.Pulse1.TimerPeriod);
+    }
+
+    [Fact]
+    public void PulseLengthCounterHaltPreventsHalfFrameDecrement()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x4015, 0x01);
+        apu.WriteRegister(0x4000, 0x20);
+        apu.WriteRegister(0x4003, 0x18);
+        apu.WriteRegister(0x4017, 0x80);
+
+        Assert.Equal(2, apu.Pulse1.LengthCounter);
+    }
+
+    [Fact]
+    public void PulseEnvelopeRestartLoadsDecayOnQuarterFrame()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x4015, 0x01);
+        apu.WriteRegister(0x4000, 0x02);
+        apu.WriteRegister(0x4003, 0x00);
+        apu.WriteRegister(0x4017, 0x80);
+
+        Assert.Equal(15, apu.Pulse1.EnvelopeOutput);
+    }
+
+    [Fact]
+    public void PulseSweepRegisterCapturesSettingsAndTargetPeriod()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x4002, 0x00);
+        apu.WriteRegister(0x4003, 0x01);
+        apu.WriteRegister(0x4001, 0b1001_0010);
+
+        Assert.True(apu.Pulse1.SweepEnabled);
+        Assert.Equal(1, apu.Pulse1.SweepPeriod);
+        Assert.False(apu.Pulse1.SweepNegate);
+        Assert.Equal(2, apu.Pulse1.SweepShift);
+        Assert.Equal(0x0140, apu.Pulse1.SweepTargetPeriod);
+    }
+
+    [Fact]
+    public void PulseOneNegativeSweepUsesOnesComplementAdjustment()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x4002, 0x00);
+        apu.WriteRegister(0x4003, 0x01);
+        apu.WriteRegister(0x4001, 0b1001_1010);
+
+        Assert.Equal(0x00BF, apu.Pulse1.SweepTargetPeriod);
+    }
+
+    [Fact]
     public void DisablingChannelClearsItsLengthCounterStatus()
     {
         var apu = new ApuBus();

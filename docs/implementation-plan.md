@@ -135,8 +135,8 @@ Deliverable: NROM homebrew/test ROMs render stable frames and PPU tests report p
 Start with CPU-visible APU behavior, then audio output:
 
 - Frame counter timing. Initial CPU-visible `$4017` frame counter mode/inhibit state and frame interrupt status bit implemented.
-- Pulse, triangle, noise, DMC channel state.
-- Length counters, envelopes, sweeps, linear counter.
+- Pulse, triangle, noise, DMC channel state. Initial pulse-channel register/timer state implemented.
+- Length counters, envelopes, sweeps, linear counter. Pulse length halt, envelope restart/clocking, and sweep target calculation implemented.
 - `$4015` status behavior. Initial channel enable, length-counter status, and status-read frame interrupt clearing implemented.
 - Frame IRQ and DMC IRQ behavior. CPU IRQ servicing and APU frame IRQ delivery implemented; DMC IRQ remains pending.
 - DMC DMA timing/corruption quirks after basic DMC works.
