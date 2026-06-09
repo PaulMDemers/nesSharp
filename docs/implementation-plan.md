@@ -159,7 +159,7 @@ After NROM is stable, add mappers by compatibility payoff:
 1. Mapper 2 / UNROM / UOROM. Implemented.
 2. Mapper 3 / CNROM. Implemented.
 3. Mapper 1 / MMC1. Initial common SxROM behavior implemented.
-4. Mapper 7 / AxROM.
+4. Mapper 7 / AxROM. Implemented.
 5. Mapper 4 / MMC3.
 
 Each mapper should be isolated behind an `IMapper` interface with CPU read/write, PPU read/write, mirroring, IRQ, and save-state hooks.

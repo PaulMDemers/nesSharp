@@ -25,6 +25,7 @@ Desktop controller 1 mapping: `Z` = A, `X` = B, `Backspace` = Select, `Enter` = 
 - Supports Mapper 1 / MMC1 serial register writes, PRG/CHR bank switching, PRG RAM enable, and switchable nametable mirroring for common SxROM games.
 - Supports Mapper 2 / UxROM switchable 16 KB PRG banking, fixed last PRG bank, CHR RAM, and fixed header mirroring.
 - Supports Mapper 3 / CNROM fixed PRG with switchable 8 KB CHR banks.
+- Supports Mapper 7 / AxROM switchable 32 KB PRG banking, CHR RAM, and mapper-controlled one-screen mirroring.
 - Provides a CPU bus shell with internal RAM mirroring, PPU register mirroring, and cartridge space.
 - Provides a CPU reset skeleton that reads the reset vector from cartridge ROM.
 - Executes the 6502 official opcode set and the stable unofficial opcodes needed by `nestest`.
