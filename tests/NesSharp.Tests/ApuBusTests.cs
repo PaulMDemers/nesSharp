@@ -185,6 +185,98 @@ public sealed class ApuBusTests
     }
 
     [Fact]
+    public void NoiseControlRegisterCapturesEnvelopeAndLengthHaltState()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x400C, 0b0011_0101);
+
+        Assert.True(apu.Noise.LengthCounterHalt);
+        Assert.True(apu.Noise.ConstantVolume);
+        Assert.Equal(5, apu.Noise.EnvelopePeriod);
+        Assert.Equal(5, apu.Noise.EnvelopeOutput);
+    }
+
+    [Fact]
+    public void NoisePeriodRegisterCapturesModeAndPeriod()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x400E, 0x8F);
+
+        Assert.True(apu.Noise.ModeFlag);
+        Assert.Equal(0x0F, apu.Noise.PeriodIndex);
+        Assert.Equal(4068, apu.Noise.TimerPeriod);
+    }
+
+    [Fact]
+    public void NoiseLengthCounterLoadsWhenChannelIsEnabled()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x4015, 0x08);
+        apu.WriteRegister(0x400F, 0x18);
+
+        Assert.Equal(2, apu.Noise.LengthCounter);
+        Assert.Equal(0x08, apu.ReadStatus() & 0x08);
+    }
+
+    [Fact]
+    public void NoiseEnvelopeRestartLoadsDecayOnQuarterFrame()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x4015, 0x08);
+        apu.WriteRegister(0x400C, 0x02);
+        apu.WriteRegister(0x400F, 0x00);
+        apu.WriteRegister(0x4017, 0x80);
+
+        Assert.Equal(15, apu.Noise.EnvelopeOutput);
+    }
+
+    [Fact]
+    public void NoiseLengthCounterHaltPreventsHalfFrameDecrement()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x4015, 0x08);
+        apu.WriteRegister(0x400C, 0x20);
+        apu.WriteRegister(0x400F, 0x18);
+        apu.WriteRegister(0x4017, 0x80);
+
+        Assert.Equal(2, apu.Noise.LengthCounter);
+    }
+
+    [Fact]
+    public void NoiseStatusClearsWhenDisabled()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x4015, 0x08);
+        apu.WriteRegister(0x400F, 0x00);
+        apu.WriteRegister(0x4015, 0x00);
+
+        Assert.Equal(0x00, apu.ReadStatus() & 0x08);
+    }
+
+    [Fact]
+    public void NoiseShiftRegisterUsesSelectedFeedbackTap()
+    {
+        var normalMode = new ApuBus();
+        var shortMode = new ApuBus();
+        shortMode.WriteRegister(0x400E, 0x80);
+
+        for (var i = 0; i < 10; i++)
+        {
+            normalMode.Noise.ClockShiftRegister();
+            shortMode.Noise.ClockShiftRegister();
+        }
+
+        Assert.Equal(0x0020, normalMode.Noise.ShiftRegister);
+        Assert.Equal(0x4020, shortMode.Noise.ShiftRegister);
+    }
+
+    [Fact]
     public void DisablingChannelClearsItsLengthCounterStatus()
     {
         var apu = new ApuBus();

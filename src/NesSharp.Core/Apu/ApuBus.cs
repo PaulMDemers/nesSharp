@@ -24,13 +24,13 @@ public sealed class ApuBus
     private bool frameInterrupt;
     private bool dmcInterrupt;
 
-    private byte noiseLength;
-
     public ApuPulseChannel Pulse1 { get; } = new(onesComplementNegate: true);
 
     public ApuPulseChannel Pulse2 { get; } = new(onesComplementNegate: false);
 
     public ApuTriangleChannel Triangle { get; } = new();
+
+    public ApuNoiseChannel Noise { get; } = new();
 
     public byte FrameCounterControl => frameCounterControl;
 
@@ -43,6 +43,7 @@ public sealed class ApuBus
         Pulse1.Reset();
         Pulse2.Reset();
         Triangle.Reset();
+        Noise.Reset();
         WriteStatus(0);
         frameCounterControl = 0;
         frameCycle = 0;
@@ -96,7 +97,7 @@ public sealed class ApuBus
             (Pulse1.LengthCounter > 0 ? Pulse1Enable : 0) |
             (Pulse2.LengthCounter > 0 ? Pulse2Enable : 0) |
             (Triangle.LengthCounter > 0 ? TriangleEnable : 0) |
-            (noiseLength > 0 ? NoiseEnable : 0) |
+            (Noise.LengthCounter > 0 ? NoiseEnable : 0) |
             (frameInterrupt ? FrameInterruptStatus : 0) |
             (dmcInterrupt ? DmcInterruptStatus : 0));
 
@@ -141,8 +142,14 @@ public sealed class ApuBus
             case 0x400B:
                 Triangle.WriteTimerHigh(value, LengthCounterTable);
                 break;
+            case 0x400C:
+                Noise.WriteControl(value);
+                break;
+            case 0x400E:
+                Noise.WritePeriod(value);
+                break;
             case 0x400F:
-                LoadLengthCounter(ref noiseLength, value, NoiseEnable);
+                Noise.WriteLength(value, LengthCounterTable);
                 break;
             case 0x4015:
                 WriteStatus(value);
@@ -164,11 +171,7 @@ public sealed class ApuBus
         Pulse1.SetEnabled((statusEnable & Pulse1Enable) != 0);
         Pulse2.SetEnabled((statusEnable & Pulse2Enable) != 0);
         Triangle.SetEnabled((statusEnable & TriangleEnable) != 0);
-
-        if ((statusEnable & NoiseEnable) == 0)
-        {
-            noiseLength = 0;
-        }
+        Noise.SetEnabled((statusEnable & NoiseEnable) != 0);
     }
 
     private void WriteFrameCounter(byte value)
@@ -199,6 +202,7 @@ public sealed class ApuBus
     {
         Pulse1.ClockEnvelope();
         Pulse2.ClockEnvelope();
+        Noise.ClockEnvelope();
         Triangle.ClockLinearCounter();
     }
 
@@ -209,14 +213,6 @@ public sealed class ApuBus
         Triangle.ClockLengthCounter();
         Pulse1.ClockSweep();
         Pulse2.ClockSweep();
-        ClockLengthCounter(ref noiseLength);
-    }
-
-    private static void ClockLengthCounter(ref byte counter)
-    {
-        if (counter > 0)
-        {
-            counter--;
-        }
+        Noise.ClockLengthCounter();
     }
 }
