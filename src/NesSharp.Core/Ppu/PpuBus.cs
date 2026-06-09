@@ -26,6 +26,8 @@ public sealed class PpuBus
     private ulong openBusLowUpdatedAt;
     private byte readBuffer;
     private byte fineX;
+    private int scrollX;
+    private int scrollY;
     private ushort currentVramAddress;
     private ushort temporaryVramAddress;
     private bool writeToggle;
@@ -134,6 +136,8 @@ public sealed class PpuBus
         openBusLowUpdatedAt = 0;
         readBuffer = 0;
         fineX = 0;
+        scrollX = 0;
+        scrollY = 0;
         currentVramAddress = 0;
         temporaryVramAddress = 0;
         writeToggle = false;
@@ -181,6 +185,8 @@ public sealed class PpuBus
             {
                 ClearRenderingFlags();
             }
+
+            EvaluateSpriteZeroHit();
         }
     }
 
@@ -215,6 +221,14 @@ public sealed class PpuBus
     private bool IsVblankSet => (registers[2] & VblankFlag) != 0;
 
     private bool IsRenderingEnabled => (registers[1] & 0x18) != 0;
+
+    private bool IsBackgroundEnabled => (registers[1] & 0x08) != 0;
+
+    private bool IsSpriteRenderingEnabled => (registers[1] & 0x10) != 0;
+
+    private bool ShowBackgroundInLeftColumn => (registers[1] & 0x02) != 0;
+
+    private bool ShowSpritesInLeftColumn => (registers[1] & 0x04) != 0;
 
     private bool IsOddFrame => (Frame & 1) != 0;
 
@@ -296,11 +310,13 @@ public sealed class PpuBus
         if (!writeToggle)
         {
             fineX = (byte)(value & 0x07);
+            scrollX = value;
             temporaryVramAddress = (ushort)((temporaryVramAddress & 0x7FE0) | (value >> 3));
             writeToggle = true;
             return;
         }
 
+        scrollY = value;
         temporaryVramAddress = (ushort)((temporaryVramAddress & 0x0C1F) | ((value & 0x07) << 12) | ((value & 0xF8) << 2));
         writeToggle = false;
     }
@@ -416,5 +432,106 @@ public sealed class PpuBus
         {
             openBusLowUpdatedAt = TotalDots;
         }
+    }
+
+    private void EvaluateSpriteZeroHit()
+    {
+        if ((registers[2] & SpriteZeroHitFlag) != 0 ||
+            !IsBackgroundEnabled ||
+            !IsSpriteRenderingEnabled ||
+            Scanline is < 0 or > 239 ||
+            Dot is < 1 or > 256)
+        {
+            return;
+        }
+
+        var x = Dot - 1;
+        var y = Scanline;
+        if (x == 255)
+        {
+            return;
+        }
+
+        if (x < 8 && (!ShowBackgroundInLeftColumn || !ShowSpritesInLeftColumn))
+        {
+            return;
+        }
+
+        if (GetBackgroundPixel(x, y) == 0 || GetSpriteZeroPixel(x, y) == 0)
+        {
+            return;
+        }
+
+        registers[2] |= SpriteZeroHitFlag;
+    }
+
+    private int GetBackgroundPixel(int x, int y)
+    {
+        var scrolledX = (scrollX + x) & 0x01FF;
+        var scrolledY = (scrollY + y) & 0x01FF;
+        var nametableSelect = registers[0] & 0x03;
+        var horizontalTable = (scrolledX / 256) & 0x01;
+        var verticalTable = (scrolledY / 240) & 0x01;
+        var table = nametableSelect ^ horizontalTable ^ (verticalTable << 1);
+        var tileX = (scrolledX & 0xFF) / 8;
+        var tileY = (scrolledY % 240) / 8;
+        var fineY = scrolledY & 0x07;
+        var tileIndex = ReadMemory((ushort)(0x2000 + table * 0x0400 + tileY * 32 + tileX));
+        var patternBase = (registers[0] & 0x10) == 0 ? 0x0000 : 0x1000;
+        var patternAddress = (ushort)(patternBase + tileIndex * 16 + fineY);
+        var low = cartridge.PpuRead(patternAddress);
+        var high = cartridge.PpuRead((ushort)(patternAddress + 8));
+        var bit = 7 - (scrolledX & 0x07);
+        return ((low >> bit) & 0x01) | (((high >> bit) & 0x01) << 1);
+    }
+
+    private int GetSpriteZeroPixel(int x, int y)
+    {
+        var spriteY = oam[0] + 1;
+        var tileIndex = oam[1];
+        var attributes = oam[2];
+        var spriteX = oam[3];
+        var height = (registers[0] & 0x20) == 0 ? 8 : 16;
+        var relativeX = x - spriteX;
+        var relativeY = y - spriteY;
+
+        if (relativeX is < 0 or >= 8 || relativeY < 0 || relativeY >= height)
+        {
+            return 0;
+        }
+
+        if ((attributes & 0x40) != 0)
+        {
+            relativeX = 7 - relativeX;
+        }
+
+        if ((attributes & 0x80) != 0)
+        {
+            relativeY = height - 1 - relativeY;
+        }
+
+        int patternBase;
+        int tile;
+        if (height == 16)
+        {
+            patternBase = (tileIndex & 0x01) * 0x1000;
+            tile = tileIndex & 0xFE;
+            if (relativeY >= 8)
+            {
+                tile++;
+                relativeY -= 8;
+            }
+        }
+        else
+        {
+            patternBase = (registers[0] & 0x08) == 0 ? 0x0000 : 0x1000;
+            tile = tileIndex;
+        }
+
+        var patternAddress = (ushort)(patternBase + tile * 16 + relativeY);
+        var low = cartridge.PpuRead(patternAddress);
+        var high = cartridge.PpuRead((ushort)(patternAddress + 8));
+        var bit = 7 - relativeX;
+        return ((low >> bit) & 0x01) | (((high >> bit) & 0x01) << 1);
     }
 }

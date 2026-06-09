@@ -8,6 +8,7 @@ public sealed class PpuRegisterRomTests
     public static TheoryData<string, string> PassingPpuRegisterRoms => new()
     {
         { "ppu_open_bus", "ppu_open_bus.nes" },
+        { "ppu_read_buffer", "test_ppu_read_buffer.nes" },
         { "oam_read", "oam_read.nes" },
         { "oam_stress", "oam_stress.nes" }
     };
