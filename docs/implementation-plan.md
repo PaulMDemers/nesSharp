@@ -116,7 +116,7 @@ Build a cycle-based NTSC PPU:
 - Visible scanlines 0-239, post-render scanline 240, vblank 241-260, pre-render scanline 261.
 - VBlank flag and NMI timing.
 - Background tile fetching, nametable/attribute decoding, scrolling registers, fine X.
-- Sprite evaluation, OAM, sprite pattern fetch, sprite 0 hit, sprite overflow behavior. Pragmatic sprite composition, priority, flipping, 8x16 tile selection, first-pass 8-sprite scanline limiting, and overflow status are implemented; cycle-accurate sprite evaluation remains pending.
+- Sprite evaluation, OAM, sprite pattern fetch, sprite 0 hit, sprite overflow behavior. Pragmatic sprite composition, priority, flipping, 8x16 tile selection, timed overflow status, and diagonal overflow search behavior are implemented; full cycle-accurate sprite fetch/render internals remain pending.
 - Palette output to a 256x240 framebuffer.
 
 First tests:
@@ -126,7 +126,7 @@ First tests:
 - `ppu_vbl_nmi`
 - `vbl_nmi_timing`
 - `sprite_hit_tests_2005.10.05`: all ROMs pass through the `$00F8` result runner.
-- `sprite_overflow_tests`: basics/details pass; timing, obscure, and emulator recalculation cases remain the next overflow milestone.
+- `sprite_overflow_tests`: all ROMs pass through the `$00F8` result runner.
 
 Deliverable: NROM homebrew/test ROMs render stable frames and PPU tests report pass or produce expected screenshots.
 

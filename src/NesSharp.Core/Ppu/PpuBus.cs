@@ -192,6 +192,7 @@ public sealed class PpuBus
                 ClearRenderingFlags();
             }
 
+            EvaluateSpriteOverflow();
             RenderCurrentPixel();
             EvaluateSpriteZeroHit();
         }
@@ -474,6 +475,22 @@ public sealed class PpuBus
         registers[2] |= SpriteZeroHitFlag;
     }
 
+    private void EvaluateSpriteOverflow()
+    {
+        if ((registers[2] & SpriteOverflowFlag) != 0 ||
+            !IsRenderingEnabled ||
+            Scanline is < 0 or > 239 ||
+            Dot is < 65 or > 256)
+        {
+            return;
+        }
+
+        if (Dot >= GetSpriteOverflowDot(Scanline))
+        {
+            registers[2] |= SpriteOverflowFlag;
+        }
+    }
+
     private void RenderCurrentPixel()
     {
         if (Scanline is < 0 or >= ScreenHeight || Dot is < 1 or > ScreenWidth)
@@ -601,20 +618,10 @@ public sealed class PpuBus
         }
 
         var canRenderSpritePixels = IsSpriteRenderingEnabled && (x >= 8 || ShowSpritesInLeftColumn);
-        var spritesOnScanline = 0;
         var renderSpritesOnScanline = 0;
         var selectedPixel = PpuPixel.Transparent;
         for (var spriteIndex = 0; spriteIndex < 64; spriteIndex++)
         {
-            if (IsSpriteInEvaluationRange(spriteIndex, y))
-            {
-                spritesOnScanline++;
-                if (spritesOnScanline > 8)
-                {
-                    registers[2] |= SpriteOverflowFlag;
-                }
-            }
-
             if (!canRenderSpritePixels || !IsSpriteInRenderRange(spriteIndex, y))
             {
                 continue;
@@ -644,10 +651,49 @@ public sealed class PpuBus
         return y >= spriteY && y < spriteY + height;
     }
 
-    private bool IsSpriteInEvaluationRange(int spriteIndex, int y)
+    private int GetSpriteOverflowDot(int y)
     {
-        var offset = spriteIndex * 4;
-        var spriteY = oam[offset];
+        var dot = 65;
+        var spritesFound = 0;
+        var spriteIndex = 0;
+
+        while (dot <= 256 && spriteIndex < 64)
+        {
+            if (spritesFound < 8)
+            {
+                var spriteY = oam[spriteIndex * 4];
+                dot += 2;
+                if (IsSpriteYInEvaluationRange(spriteY, y))
+                {
+                    spritesFound++;
+                    dot += 6;
+                }
+
+                spriteIndex++;
+                continue;
+            }
+
+            var byteIndex = 0;
+            while (dot <= 256 && spriteIndex < 64)
+            {
+                // Hardware keeps advancing both sprite and byte index after secondary OAM fills.
+                var candidateY = oam[spriteIndex * 4 + byteIndex];
+                dot += 2;
+                if (IsSpriteYInEvaluationRange(candidateY, y))
+                {
+                    return dot;
+                }
+
+                spriteIndex++;
+                byteIndex = (byteIndex + 1) & 0x03;
+            }
+        }
+
+        return int.MaxValue;
+    }
+
+    private bool IsSpriteYInEvaluationRange(byte spriteY, int y)
+    {
         var height = (registers[0] & 0x20) == 0 ? 8 : 16;
         return y >= spriteY && y < spriteY + height;
     }
