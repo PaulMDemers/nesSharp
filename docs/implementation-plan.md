@@ -116,7 +116,7 @@ Build a cycle-based NTSC PPU:
 - Visible scanlines 0-239, post-render scanline 240, vblank 241-260, pre-render scanline 261.
 - VBlank flag and NMI timing.
 - Background tile fetching, nametable/attribute decoding, scrolling registers, fine X.
-- Sprite evaluation, OAM, sprite pattern fetch, sprite 0 hit, sprite overflow behavior.
+- Sprite evaluation, OAM, sprite pattern fetch, sprite 0 hit, sprite overflow behavior. Pragmatic sprite composition, priority, flipping, 8x16 tile selection, first-pass 8-sprite scanline limiting, and overflow status are implemented; cycle-accurate sprite evaluation remains pending.
 - Palette output to a 256x240 framebuffer.
 
 First tests:

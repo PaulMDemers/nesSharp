@@ -39,7 +39,7 @@ Battery-backed saves are loaded from and written to a `.sav` file beside the ROM
 - Advances PPU timing during CPU bus accesses, with raw bus reads preserved for tracing/debug inspection.
 - Models the `$2002` vblank-set suppression window and near-vblank NMI cancellation.
 - Implements CPU-visible PPU VRAM, nametable mirroring, palette mirroring, buffered `$2007` reads, `$2005/$2006` write latch behavior, OAM, phase-aligned OAM DMA cycle timing, and PPU open-bus decay.
-- Implements rudimentary visible-scanline background/sprite 0 pixel overlap detection for `$2002.6` sprite 0 hit.
+- Implements pragmatic visible-scanline sprite composition, sprite/background priority, sprite flipping, 8x16 sprite tile selection, first-pass 8-sprite scanline limiting, sprite overflow status, and sprite 0 hit detection.
 - Maintains a 256x240 palette-index framebuffer and can export it as binary PPM through the CLI.
 - Uses a shared NES RGB palette for frame export and visual regression hashing.
 - Includes a deterministic RGB hash regression for `ppu_read_buffer` frame 120.
@@ -65,6 +65,6 @@ Battery-backed saves are loaded from and written to a `.sav` file beside the ROM
 
 ## Known Next Accuracy Work
 
-The remaining `ppu_vbl_nmi` timing ROMs need tighter CPU/PPU phase modeling around NMI recognition, pre-render clear timing, and rendering-enable odd-frame skip timing. Rendering is currently pragmatic rather than cycle-perfect: it is good enough for first framebuffer inspection and sprite 0 hit tests, but sprite evaluation, scrolling during rendering, and pixel priority still need refinement.
+The remaining `ppu_vbl_nmi` timing ROMs need tighter CPU/PPU phase modeling around NMI recognition, pre-render clear timing, and rendering-enable odd-frame skip timing. Rendering is currently pragmatic rather than cycle-perfect: it is good enough for first framebuffer inspection and focused sprite/background tests, but sprite evaluation, scrolling during rendering, and fetch timing still need refinement.
 
 The staged implementation plan is in `docs/implementation-plan.md`.

@@ -600,16 +600,38 @@ public sealed class PpuBus
             return PpuPixel.Transparent;
         }
 
+        var spritesOnScanline = 0;
+        var selectedPixel = PpuPixel.Transparent;
         for (var spriteIndex = 0; spriteIndex < 64; spriteIndex++)
         {
-            var pixel = GetSpritePixel(spriteIndex, x, y);
-            if (pixel.Color != 0)
+            if (!IsSpriteVerticallyInRange(spriteIndex, y))
             {
-                return pixel;
+                continue;
+            }
+
+            spritesOnScanline++;
+            if (spritesOnScanline > 8)
+            {
+                registers[2] |= SpriteOverflowFlag;
+                break;
+            }
+
+            var pixel = GetSpritePixel(spriteIndex, x, y);
+            if (selectedPixel.Color == 0 && pixel.Color != 0)
+            {
+                selectedPixel = pixel;
             }
         }
 
-        return PpuPixel.Transparent;
+        return selectedPixel;
+    }
+
+    private bool IsSpriteVerticallyInRange(int spriteIndex, int y)
+    {
+        var offset = spriteIndex * 4;
+        var spriteY = oam[offset] + 1;
+        var height = (registers[0] & 0x20) == 0 ? 8 : 16;
+        return y >= spriteY && y < spriteY + height;
     }
 
     private PpuPixel GetSpritePixel(int spriteIndex, int x, int y)

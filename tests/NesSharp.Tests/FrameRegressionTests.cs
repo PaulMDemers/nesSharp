@@ -21,7 +21,7 @@ public sealed class FrameRegressionTests
 
         var hash = Convert.ToHexString(SHA256.HashData(ToRgb(machine.PpuBus.Framebuffer))).ToLowerInvariant();
 
-        Assert.Equal("77b7ffa7f356c047e07bba70b21eeff0f6d406b4b271fe8a70db0cbec6b891ab", hash);
+        Assert.Equal("807c3c7c4c94f22c5067b3afbb8a3f0566c35de2cb5687cfe6ef466b778ed9f5", hash);
     }
 
     private static byte[] ToRgb(ReadOnlySpan<byte> framebuffer)
@@ -55,4 +55,3 @@ public sealed class FrameRegressionTests
         throw new DirectoryNotFoundException("Could not find workspace root containing ppu_read_buffer.");
     }
 }
-
