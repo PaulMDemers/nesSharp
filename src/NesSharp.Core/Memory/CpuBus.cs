@@ -164,10 +164,21 @@ public sealed class CpuBus
 
     private void ApplyDmcReadConflict(ushort? haltedReadAddress)
     {
-        if (haltedReadAddress is 0x4016 or 0x4017)
+        if (haltedReadAddress is null)
+        {
+            return;
+        }
+
+        if (IsDmcRepeatedReadAddress(haltedReadAddress.Value))
         {
             ReadRaw(haltedReadAddress.Value);
         }
+    }
+
+    private static bool IsDmcRepeatedReadAddress(ushort address)
+    {
+        return address is 0x4015 or 0x4016 or 0x4017 ||
+            (address is >= 0x2000 and <= 0x3FFF && (address & 0x0007) is 2 or 7);
     }
 
     private void RunOamDma(byte page)

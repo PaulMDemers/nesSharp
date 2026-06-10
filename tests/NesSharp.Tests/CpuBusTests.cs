@@ -168,6 +168,25 @@ public sealed class CpuBusTests
         Assert.Equal(0, bus.ApuBus.Dmc.BytesRemaining);
     }
 
+    [Fact]
+    public void DmcDmaDuringPpuDataReadAdvancesPpuReadBuffer()
+    {
+        var bus = new CpuBus(CreateCartridgeWithResetVector());
+        bus.Write(0x2006, 0x20);
+        bus.Write(0x2006, 0x00);
+        bus.Write(0x2007, 0x11);
+        bus.Write(0x2007, 0x22);
+        bus.Write(0x2007, 0x33);
+        bus.Write(0x2006, 0x20);
+        bus.Write(0x2006, 0x00);
+        bus.WriteRaw(0x4013, 0x00);
+        bus.WriteRaw(0x4015, 0x10);
+
+        Assert.Equal(0x00, bus.Read(0x2007));
+
+        Assert.Equal(0x22, bus.Read(0x2007));
+    }
+
     private static Cartridge CreateCartridgeWithResetVector(ushort resetVector = 0x8000)
     {
         return CreateCartridgeWithVectors(resetVector);
