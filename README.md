@@ -51,7 +51,7 @@ Battery-backed saves are loaded from and written to a `.sav` file beside the ROM
 - Models initial noise-channel register state, period/mode, length counter, envelope restart/clocking, and shift-register feedback.
 - Models initial DMC register state, direct output level, sample address/length, status bit, looping, and IRQ flag behavior.
 - Produces a drainable mono APU sample buffer using channel timer clocks and the NES nonlinear mixer formula.
-- Includes an initial WinForms desktop host with framebuffer display, ROM loading, reset/pause actions, and keyboard input for controller 1.
+- Includes an initial WinForms desktop host with framebuffer display, audio playback, ROM loading, reset/pause actions, and keyboard input for controller 1.
 - Runs desktop emulation on a background frame loop with UI-thread framebuffer presentation.
 - Includes a desktop power-cycle command that rebuilds mapper/machine state while preserving battery-backed save data.
 - Passes `ppu_vbl_nmi` ROMs `01-vbl_basics`, `02-vbl_set_time`, `03-vbl_clear_time`, `04-nmi_control`, `06-suppression`, and `09-even_odd_frames`.

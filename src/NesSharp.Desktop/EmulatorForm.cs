@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using NesSharp.Core.Cartridge;
 using NesSharp.Core.Input;
@@ -16,6 +17,7 @@ internal sealed class EmulatorForm : Form
     private readonly ToolStripMenuItem powerCycleMenuItem = new("&Power Cycle");
     private readonly ToolStripMenuItem pauseMenuItem = new("&Pause") { CheckOnClick = true };
     private readonly Lock machineLock = new();
+    private readonly WaveOutAudioPlayer audioPlayer = new();
 
     private NesMachine? machine;
     private string? romPath;
@@ -23,6 +25,7 @@ internal sealed class EmulatorForm : Form
     private ControllerButton controllerState;
     private CancellationTokenSource? emulationCancellation;
     private Task? emulationTask;
+    private string? audioStatus;
     private int pendingFramePresentations;
 
     public EmulatorForm(IReadOnlyList<string> args)
@@ -102,6 +105,7 @@ internal sealed class EmulatorForm : Form
             StopEmulationLoop();
             SaveCurrentBatteryRam();
             display.Dispose();
+            audioPlayer.Dispose();
         }
 
         base.Dispose(disposing);
@@ -262,6 +266,16 @@ internal sealed class EmulatorForm : Form
             return;
         }
 
+        try
+        {
+            audioPlayer.Start();
+            audioStatus = null;
+        }
+        catch (Exception ex) when (ex is Win32Exception or DllNotFoundException or EntryPointNotFoundException)
+        {
+            audioStatus = "audio unavailable";
+        }
+
         emulationCancellation = new CancellationTokenSource();
         var token = emulationCancellation.Token;
         emulationTask = Task.Run(() => RunEmulationLoop(token), token);
@@ -272,6 +286,7 @@ internal sealed class EmulatorForm : Form
         var cancellation = emulationCancellation;
         if (cancellation is null)
         {
+            audioPlayer.Stop();
             return;
         }
 
@@ -286,6 +301,7 @@ internal sealed class EmulatorForm : Form
         }
         finally
         {
+            audioPlayer.Stop();
             cancellation.Dispose();
             emulationTask = null;
         }
@@ -297,6 +313,7 @@ internal sealed class EmulatorForm : Form
         {
             var frameStartedAt = Stopwatch.GetTimestamp();
             var framebuffer = new byte[NesDisplayControl.NesWidth * NesDisplayControl.NesHeight];
+            var audioSamples = Array.Empty<float>();
             ulong frame = 0;
             var frameLimited = false;
 
@@ -320,6 +337,7 @@ internal sealed class EmulatorForm : Form
                     }
 
                     machine.PpuBus.Framebuffer.CopyTo(framebuffer);
+                    audioSamples = machine.CpuBus.ApuBus.DrainSamples();
                     frame = machine.PpuBus.Frame;
                     frameLimited = instructions >= MaxInstructionsPerFrame;
                 }
@@ -336,6 +354,7 @@ internal sealed class EmulatorForm : Form
             }
 
             PostFrame(framebuffer, frame, frameLimited);
+            audioPlayer.Enqueue(audioSamples);
             WaitForNextFrame(frameStartedAt, token);
         }
     }
@@ -423,7 +442,8 @@ internal sealed class EmulatorForm : Form
 
         var state = pauseMenuItem.Checked ? "paused" : "running";
         var limited = frameLimited ? " - frame budget reached" : string.Empty;
-        statusLabel.Text = $"{Path.GetFileName(romPath)} - frame {renderedFrame ?? machine!.PpuBus.Frame} - {state}{limited}";
+        var audio = audioStatus is null ? string.Empty : $" - {audioStatus}";
+        statusLabel.Text = $"{Path.GetFileName(romPath)} - frame {renderedFrame ?? machine!.PpuBus.Frame} - {state}{limited}{audio}";
     }
 
     private NesMachine LoadMachine(string path, string loadedSavePath)

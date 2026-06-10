@@ -3,7 +3,8 @@ namespace NesSharp.Core.Apu;
 public sealed class ApuBus
 {
     private const double CpuClockRate = 1_789_773.0;
-    private const double SampleRate = 44_100.0;
+    public const int OutputSampleRate = 44_100;
+    private const double SampleRate = OutputSampleRate;
     private const byte Pulse1Enable = 0x01;
     private const byte Pulse2Enable = 0x02;
     private const byte TriangleEnable = 0x04;

@@ -140,7 +140,7 @@ Start with CPU-visible APU behavior, then audio output:
 - `$4015` status behavior. Initial channel enable, length-counter status, and status-read frame interrupt clearing implemented.
 - Frame IRQ and DMC IRQ behavior. CPU IRQ servicing, APU frame IRQ delivery, and DMC IRQ flag/status behavior implemented.
 - DMC DMA timing/corruption quirks after basic DMC works.
-- Mixer and sample generation for the desktop host. Initial core mono sample buffer and nonlinear mixer implemented; desktop playback remains pending.
+- Mixer and sample generation for the desktop host. Initial core mono sample buffer, nonlinear mixer, and desktop playback path implemented.
 
 First tests:
 
