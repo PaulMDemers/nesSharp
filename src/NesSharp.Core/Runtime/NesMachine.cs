@@ -45,7 +45,7 @@ public sealed class NesMachine
     public int StepInstruction()
     {
         var cpuCycles = Cpu.Step();
-        var remainingCycles = cpuCycles - CpuBus.CpuAccessCycles;
+        var remainingCycles = cpuCycles - CpuBus.InstructionAccessCycles;
         if (remainingCycles > 0)
         {
             for (var i = 0; i < remainingCycles; i++)

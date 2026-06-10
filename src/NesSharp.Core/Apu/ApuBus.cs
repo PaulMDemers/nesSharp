@@ -50,9 +50,15 @@ public sealed class ApuBus
 
     public int PendingSampleCount => samples.Count;
 
-    public void SetDmcSampleReader(Func<ushort, byte> reader)
+    public bool IsDmcDmaPending => Dmc.IsSampleFetchPending;
+
+    public ushort PendingDmcDmaAddress => Dmc.PendingSampleAddress;
+
+    public int PendingDmcDmaCycles => Dmc.PendingSampleFetchCycles;
+
+    public void CompleteDmcDma(byte value)
     {
-        Dmc.SetSampleReader(reader);
+        Dmc.CompleteSampleFetch(value);
     }
 
     public void Reset()

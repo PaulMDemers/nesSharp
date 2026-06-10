@@ -333,9 +333,11 @@ public sealed class ApuBusTests
 
         apu.WriteRegister(0x4015, 0x10);
 
-        Assert.Equal(0xC041, apu.Dmc.CurrentAddress);
-        Assert.Equal(32, apu.Dmc.BytesRemaining);
-        Assert.False(apu.Dmc.SampleBufferEmpty);
+        Assert.Equal(0xC040, apu.Dmc.CurrentAddress);
+        Assert.Equal(33, apu.Dmc.BytesRemaining);
+        Assert.True(apu.Dmc.SampleBufferEmpty);
+        Assert.True(apu.IsDmcDmaPending);
+        Assert.Equal(0xC040, apu.PendingDmcDmaAddress);
         Assert.Equal(0x10, apu.ReadStatus() & 0x10);
     }
 
@@ -387,7 +389,7 @@ public sealed class ApuBusTests
         apu.WriteRegister(0x4013, 0x01);
         apu.WriteRegister(0x4015, 0x10);
 
-        for (var i = 0; i < 16; i++)
+        for (var i = 0; i < 17; i++)
         {
             apu.Dmc.MarkSampleByteRead();
         }
@@ -404,7 +406,7 @@ public sealed class ApuBusTests
         apu.WriteRegister(0x4013, 0x05);
         apu.WriteRegister(0x4015, 0x10);
 
-        for (var i = 0; i < 63; i++)
+        for (var i = 0; i < 64; i++)
         {
             apu.Dmc.MarkSampleByteRead();
         }
@@ -433,20 +435,16 @@ public sealed class ApuBusTests
     public void DmcPlaybackUsesSampleReaderAndDeltaBits()
     {
         var apu = new ApuBus();
-        ushort? requestedAddress = null;
-        apu.SetDmcSampleReader(address =>
-        {
-            requestedAddress = address;
-            return 0b0000_0011;
-        });
         apu.WriteRegister(0x4010, 0x0F);
         apu.WriteRegister(0x4011, 64);
         apu.WriteRegister(0x4013, 0x00);
         apu.WriteRegister(0x4015, 0x10);
 
+        Assert.True(apu.IsDmcDmaPending);
+        Assert.Equal(0xC000, apu.PendingDmcDmaAddress);
+        apu.CompleteDmcDma(0b0000_0011);
         ClockDmcTimerTicks(apu, 10);
 
-        Assert.Equal((ushort)0xC000, requestedAddress);
         Assert.True(apu.Dmc.SampleBufferEmpty);
         Assert.False(apu.Dmc.Silence);
         Assert.True(apu.Dmc.OutputLevel > 64);
@@ -456,14 +454,51 @@ public sealed class ApuBusTests
     public void DmcSampleReaderUsesCpuBusMappedMemory()
     {
         var bus = new CpuBus(CreateCartridge(dmcSample: 0b0000_0011));
-        bus.ApuBus.WriteRegister(0x4010, 0x0F);
-        bus.ApuBus.WriteRegister(0x4011, 64);
-        bus.ApuBus.WriteRegister(0x4013, 0x00);
-        bus.ApuBus.WriteRegister(0x4015, 0x10);
+        bus.Write(0x4010, 0x0F);
+        bus.Write(0x4011, 64);
+        bus.Write(0x4013, 0x00);
+        bus.Write(0x4015, 0x10);
 
         ClockDmcTimerTicks(bus.ApuBus, 10);
 
         Assert.True(bus.ApuBus.Dmc.OutputLevel > 64);
+    }
+
+    [Fact]
+    public void DmcLoadDmaAddsThreeCpuCycles()
+    {
+        var bus = new CpuBus(CreateCartridge());
+        bus.WriteRaw(0x4013, 0x00);
+
+        bus.BeginCpuInstruction();
+        bus.Write(0x4015, 0x10);
+        bus.EndCpuInstruction();
+
+        Assert.Equal(4, bus.CpuAccessCycles);
+        Assert.Equal(1, bus.InstructionAccessCycles);
+        Assert.False(bus.ApuBus.IsDmcDmaPending);
+        Assert.Equal(0, bus.ApuBus.Dmc.BytesRemaining);
+    }
+
+    [Fact]
+    public void DmcReloadDmaAddsFourCpuCycles()
+    {
+        var bus = new CpuBus(CreateCartridge(dmcSample: 0b0000_0011));
+        bus.Write(0x4010, 0x0F);
+        bus.Write(0x4011, 64);
+        bus.Write(0x4013, 0x01);
+        bus.Write(0x4015, 0x10);
+        ClockDmcTimerTicks(bus.ApuBus, 8);
+
+        Assert.True(bus.ApuBus.IsDmcDmaPending);
+
+        bus.BeginCpuInstruction();
+        bus.Read(0x8000);
+        bus.EndCpuInstruction();
+
+        Assert.Equal(5, bus.CpuAccessCycles);
+        Assert.Equal(1, bus.InstructionAccessCycles);
+        Assert.False(bus.ApuBus.IsDmcDmaPending);
     }
 
     [Fact]

@@ -11,6 +11,7 @@ public sealed class CpuBus
     private readonly PpuBus ppuBus;
     private Action? cpuCycleElapsed;
     private bool trackCpuAccessCycles;
+    private int instructionAccessCycles;
 
     public CpuBus(Cartridge.Cartridge cartridge)
         : this(cartridge, new PpuBus(cartridge))
@@ -21,7 +22,6 @@ public sealed class CpuBus
     {
         Cartridge = cartridge;
         this.ppuBus = ppuBus;
-        ApuBus.SetDmcSampleReader(ReadRaw);
     }
 
     public Cartridge.Cartridge Cartridge { get; }
@@ -34,6 +34,8 @@ public sealed class CpuBus
 
     public int CpuAccessCycles { get; private set; }
 
+    public int InstructionAccessCycles => instructionAccessCycles;
+
     public void SetCpuCycleCallback(Action callback)
     {
         cpuCycleElapsed = callback;
@@ -42,6 +44,7 @@ public sealed class CpuBus
     public void BeginCpuInstruction()
     {
         CpuAccessCycles = 0;
+        instructionAccessCycles = 0;
         trackCpuAccessCycles = true;
     }
 
@@ -53,7 +56,9 @@ public sealed class CpuBus
     public byte Read(ushort address)
     {
         ClockCpuAccess();
-        return ReadRaw(address);
+        var value = ReadRaw(address);
+        RunPendingDmcDma();
+        return value;
     }
 
     public byte ReadRaw(ushort address)
@@ -74,6 +79,7 @@ public sealed class CpuBus
     {
         ClockCpuAccess();
         WriteRaw(address, value);
+        RunPendingDmcDma();
     }
 
     public void WriteRaw(ushort address, byte value)
@@ -119,15 +125,37 @@ public sealed class CpuBus
         return (ushort)(low | (high << 8));
     }
 
-    private void ClockCpuAccess()
+    private void ClockCpuAccess(bool instructionAccess = true)
     {
         if (!trackCpuAccessCycles)
         {
             return;
         }
 
+        if (instructionAccess)
+        {
+            instructionAccessCycles++;
+        }
+
         CpuAccessCycles++;
         cpuCycleElapsed?.Invoke();
+    }
+
+    private void RunPendingDmcDma()
+    {
+        if (!ApuBus.IsDmcDmaPending)
+        {
+            return;
+        }
+
+        var address = ApuBus.PendingDmcDmaAddress;
+        var cycles = ApuBus.PendingDmcDmaCycles;
+        for (var i = 0; i < cycles; i++)
+        {
+            ClockCpuAccess(instructionAccess: false);
+        }
+
+        ApuBus.CompleteDmcDma(ReadRaw(address));
     }
 
     private void RunOamDma(byte page)
@@ -140,7 +168,7 @@ public sealed class CpuBus
 
         for (var i = 0; i < 513; i++)
         {
-            ClockCpuAccess();
+            ClockCpuAccess(instructionAccess: false);
         }
     }
 }

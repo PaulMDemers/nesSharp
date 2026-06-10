@@ -8,12 +8,14 @@ public sealed class ApuDmcChannel
         190, 160, 142, 128, 106, 84, 72, 54
     ];
 
-    private Func<ushort, byte>? sampleReader;
     private ushort timerCounter;
     private byte? sampleBuffer;
     private byte shiftRegister;
     private byte bitsRemaining = 8;
     private bool silence = true;
+    private ushort pendingSampleAddress;
+    private bool sampleFetchPending;
+    private bool pendingFetchIsLoad;
 
     public bool IrqEnabled { get; private set; }
 
@@ -37,6 +39,12 @@ public sealed class ApuDmcChannel
 
     public bool IsActive => BytesRemaining > 0;
 
+    public bool IsSampleFetchPending => sampleFetchPending;
+
+    public ushort PendingSampleAddress => pendingSampleAddress;
+
+    public int PendingSampleFetchCycles => pendingFetchIsLoad ? 3 : 4;
+
     public bool SampleBufferEmpty => sampleBuffer is null;
 
     public byte BitsRemaining => bitsRemaining;
@@ -59,11 +67,9 @@ public sealed class ApuDmcChannel
         shiftRegister = 0;
         bitsRemaining = 8;
         silence = true;
-    }
-
-    public void SetSampleReader(Func<ushort, byte> reader)
-    {
-        sampleReader = reader;
+        pendingSampleAddress = 0;
+        sampleFetchPending = false;
+        pendingFetchIsLoad = false;
     }
 
     public void WriteControl(byte value)
@@ -101,11 +107,12 @@ public sealed class ApuDmcChannel
                 RestartSample();
             }
 
-            TryFillSampleBuffer();
+            RequestSampleFetch(isLoad: true);
         }
         else
         {
             BytesRemaining = 0;
+            sampleFetchPending = false;
         }
     }
 
@@ -122,6 +129,25 @@ public sealed class ApuDmcChannel
 
     public void MarkSampleByteRead()
     {
+        if (sampleFetchPending)
+        {
+            CompleteSampleFetch(0);
+        }
+        else
+        {
+            CompleteSampleByteRead();
+        }
+    }
+
+    public void CompleteSampleFetch(byte value)
+    {
+        if (!sampleFetchPending)
+        {
+            return;
+        }
+
+        sampleFetchPending = false;
+        sampleBuffer = value;
         CompleteSampleByteRead();
     }
 
@@ -168,25 +194,26 @@ public sealed class ApuDmcChannel
         if (sampleBuffer is null)
         {
             silence = true;
-            TryFillSampleBuffer();
+            RequestSampleFetch(isLoad: false);
             return;
         }
 
         silence = false;
         shiftRegister = sampleBuffer.Value;
         sampleBuffer = null;
-        TryFillSampleBuffer();
+        RequestSampleFetch(isLoad: false);
     }
 
-    private void TryFillSampleBuffer()
+    private void RequestSampleFetch(bool isLoad)
     {
-        if (sampleBuffer is not null || BytesRemaining == 0)
+        if (sampleFetchPending || sampleBuffer is not null || BytesRemaining == 0)
         {
             return;
         }
 
-        sampleBuffer = sampleReader?.Invoke(CurrentAddress) ?? 0;
-        CompleteSampleByteRead();
+        pendingSampleAddress = CurrentAddress;
+        pendingFetchIsLoad = isLoad;
+        sampleFetchPending = true;
     }
 
     private void CompleteSampleByteRead()
