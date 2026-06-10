@@ -277,6 +277,146 @@ public sealed class ApuBusTests
     }
 
     [Fact]
+    public void DmcControlRegisterCapturesIrqLoopAndRate()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x4010, 0b1100_1111);
+
+        Assert.True(apu.Dmc.IrqEnabled);
+        Assert.True(apu.Dmc.Loop);
+        Assert.Equal(0x0F, apu.Dmc.RateIndex);
+        Assert.Equal(54, apu.Dmc.TimerPeriod);
+    }
+
+    [Fact]
+    public void DmcDirectLoadStoresSevenBitOutputLevel()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x4011, 0xFF);
+
+        Assert.Equal(0x7F, apu.Dmc.OutputLevel);
+    }
+
+    [Fact]
+    public void DmcSampleAddressAndLengthRegistersUseHardwareFormula()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x4012, 0x34);
+        apu.WriteRegister(0x4013, 0x12);
+
+        Assert.Equal(0xCD00, apu.Dmc.SampleAddress);
+        Assert.Equal(0x0121, apu.Dmc.SampleLength);
+    }
+
+    [Fact]
+    public void DmcEnableStartsSampleAndStatusReportsBytesRemaining()
+    {
+        var apu = new ApuBus();
+        apu.WriteRegister(0x4012, 0x01);
+        apu.WriteRegister(0x4013, 0x02);
+
+        apu.WriteRegister(0x4015, 0x10);
+
+        Assert.Equal(0xC040, apu.Dmc.CurrentAddress);
+        Assert.Equal(33, apu.Dmc.BytesRemaining);
+        Assert.Equal(0x10, apu.ReadStatus() & 0x10);
+    }
+
+    [Fact]
+    public void DmcDisableClearsBytesRemainingAndStatusBit()
+    {
+        var apu = new ApuBus();
+        apu.WriteRegister(0x4015, 0x10);
+
+        apu.WriteRegister(0x4015, 0x00);
+
+        Assert.Equal(0, apu.Dmc.BytesRemaining);
+        Assert.Equal(0x00, apu.ReadStatus() & 0x10);
+    }
+
+    [Fact]
+    public void DmcControlWriteClearsInterruptWhenIrqDisabled()
+    {
+        var apu = new ApuBus();
+        apu.WriteRegister(0x4010, 0x80);
+        apu.WriteRegister(0x4015, 0x10);
+
+        apu.Dmc.MarkSampleByteRead();
+        apu.WriteRegister(0x4010, 0x00);
+
+        Assert.False(apu.Dmc.InterruptFlag);
+        Assert.Equal(0x00, apu.ReadStatus() & 0x80);
+    }
+
+    [Fact]
+    public void DmcSampleCompletionSetsIrqWhenEnabledAndNotLooping()
+    {
+        var apu = new ApuBus();
+        apu.WriteRegister(0x4010, 0x80);
+        apu.WriteRegister(0x4015, 0x10);
+
+        apu.Dmc.MarkSampleByteRead();
+
+        Assert.True(apu.Dmc.InterruptFlag);
+        Assert.Equal(0x80, apu.ReadStatus() & 0x80);
+        Assert.True(apu.IsDmcInterruptPending);
+    }
+
+    [Fact]
+    public void DmcSampleCompletionLoopsWhenLoopFlagIsSet()
+    {
+        var apu = new ApuBus();
+        apu.WriteRegister(0x4010, 0x40);
+        apu.WriteRegister(0x4013, 0x01);
+        apu.WriteRegister(0x4015, 0x10);
+
+        for (var i = 0; i < 17; i++)
+        {
+            apu.Dmc.MarkSampleByteRead();
+        }
+
+        Assert.Equal(17, apu.Dmc.BytesRemaining);
+        Assert.False(apu.Dmc.InterruptFlag);
+    }
+
+    [Fact]
+    public void DmcAddressWrapsToEightThousandAfterFfff()
+    {
+        var apu = new ApuBus();
+        apu.WriteRegister(0x4012, 0xFF);
+        apu.WriteRegister(0x4013, 0x05);
+        apu.WriteRegister(0x4015, 0x10);
+
+        for (var i = 0; i < 64; i++)
+        {
+            apu.Dmc.MarkSampleByteRead();
+        }
+
+        Assert.Equal(0x8000, apu.Dmc.CurrentAddress);
+    }
+
+    [Fact]
+    public void DmcInterruptRequestsCpuIrqThroughMachine()
+    {
+        var machine = new NesMachine(CreateLoopCartridge(irqVector: 0x9000));
+        machine.Reset();
+        machine.StepInstruction();
+        machine.CpuBus.Write(0x4010, 0x80);
+        machine.CpuBus.Write(0x4015, 0x10);
+        machine.CpuBus.ApuBus.Dmc.MarkSampleByteRead();
+
+        for (var i = 0; i < 10 && machine.Cpu.ProgramCounter != 0x9000; i++)
+        {
+            machine.StepInstruction();
+        }
+
+        Assert.Equal(0x9000, machine.Cpu.ProgramCounter);
+    }
+
+    [Fact]
     public void DisablingChannelClearsItsLengthCounterStatus()
     {
         var apu = new ApuBus();

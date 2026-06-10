@@ -6,6 +6,7 @@ public sealed class ApuBus
     private const byte Pulse2Enable = 0x02;
     private const byte TriangleEnable = 0x04;
     private const byte NoiseEnable = 0x08;
+    private const byte DmcEnable = 0x10;
     private const byte FrameInterruptStatus = 0x40;
     private const byte DmcInterruptStatus = 0x80;
     private const int FourStepFrameCycles = 29_829;
@@ -22,7 +23,6 @@ public sealed class ApuBus
     private byte frameCounterControl;
     private int frameCycle;
     private bool frameInterrupt;
-    private bool dmcInterrupt;
 
     public ApuPulseChannel Pulse1 { get; } = new(onesComplementNegate: true);
 
@@ -32,9 +32,13 @@ public sealed class ApuBus
 
     public ApuNoiseChannel Noise { get; } = new();
 
+    public ApuDmcChannel Dmc { get; } = new();
+
     public byte FrameCounterControl => frameCounterControl;
 
     public bool IsFrameInterruptPending => frameInterrupt;
+
+    public bool IsDmcInterruptPending => Dmc.InterruptFlag;
 
     public byte StatusEnable => statusEnable;
 
@@ -44,11 +48,11 @@ public sealed class ApuBus
         Pulse2.Reset();
         Triangle.Reset();
         Noise.Reset();
+        Dmc.Reset();
         WriteStatus(0);
         frameCounterControl = 0;
         frameCycle = 0;
         frameInterrupt = false;
-        dmcInterrupt = false;
     }
 
     public void Clock()
@@ -98,8 +102,9 @@ public sealed class ApuBus
             (Pulse2.LengthCounter > 0 ? Pulse2Enable : 0) |
             (Triangle.LengthCounter > 0 ? TriangleEnable : 0) |
             (Noise.LengthCounter > 0 ? NoiseEnable : 0) |
+            (Dmc.IsActive ? DmcEnable : 0) |
             (frameInterrupt ? FrameInterruptStatus : 0) |
-            (dmcInterrupt ? DmcInterruptStatus : 0));
+            (Dmc.InterruptFlag ? DmcInterruptStatus : 0));
 
         frameInterrupt = false;
         return value;
@@ -151,6 +156,18 @@ public sealed class ApuBus
             case 0x400F:
                 Noise.WriteLength(value, LengthCounterTable);
                 break;
+            case 0x4010:
+                Dmc.WriteControl(value);
+                break;
+            case 0x4011:
+                Dmc.WriteDirectLoad(value);
+                break;
+            case 0x4012:
+                Dmc.WriteSampleAddress(value);
+                break;
+            case 0x4013:
+                Dmc.WriteSampleLength(value);
+                break;
             case 0x4015:
                 WriteStatus(value);
                 break;
@@ -167,11 +184,12 @@ public sealed class ApuBus
     private void WriteStatus(byte value)
     {
         statusEnable = (byte)(value & 0x1F);
-        dmcInterrupt = false;
         Pulse1.SetEnabled((statusEnable & Pulse1Enable) != 0);
         Pulse2.SetEnabled((statusEnable & Pulse2Enable) != 0);
         Triangle.SetEnabled((statusEnable & TriangleEnable) != 0);
         Noise.SetEnabled((statusEnable & NoiseEnable) != 0);
+        Dmc.ClearInterrupt();
+        Dmc.SetEnabled((statusEnable & DmcEnable) != 0);
     }
 
     private void WriteFrameCounter(byte value)

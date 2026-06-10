@@ -49,6 +49,7 @@ Battery-backed saves are loaded from and written to a `.sav` file beside the ROM
 - Models initial pulse-channel register state, length halt, envelope restart/clocking, timer period, and sweep target calculation.
 - Models initial triangle-channel register state, timer period, length counter, and linear counter reload/control behavior.
 - Models initial noise-channel register state, period/mode, length counter, envelope restart/clocking, and shift-register feedback.
+- Models initial DMC register state, direct output level, sample address/length, status bit, looping, and IRQ flag behavior.
 - Includes an initial WinForms desktop host with framebuffer display, ROM loading, reset/pause actions, and keyboard input for controller 1.
 - Runs desktop emulation on a background frame loop with UI-thread framebuffer presentation.
 - Includes a desktop power-cycle command that rebuilds mapper/machine state while preserving battery-backed save data.
