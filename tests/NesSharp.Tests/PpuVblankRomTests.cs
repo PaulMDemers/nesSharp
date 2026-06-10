@@ -12,6 +12,7 @@ public sealed class PpuVblankRomTests
         "03-vbl_clear_time.nes",
         "04-nmi_control.nes",
         "06-suppression.nes",
+        "07-nmi_on_timing.nes",
         "09-even_odd_frames.nes"
     };
 

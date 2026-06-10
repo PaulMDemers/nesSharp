@@ -86,7 +86,7 @@ public sealed class PpuBus
                 var wasNmiEnabled = IsNmiEnabled;
                 registers[0] = value;
                 temporaryVramAddress = (ushort)((temporaryVramAddress & 0xF3FF) | ((value & 0x03) << 10));
-                if (!wasNmiEnabled && IsNmiEnabled && IsVblankSet)
+                if (!wasNmiEnabled && IsNmiEnabled && CanTriggerImmediateNmi)
                 {
                     nmiPending = true;
                     nmiPollDelay = 1;
@@ -228,6 +228,8 @@ public sealed class PpuBus
 
     private bool IsVblankSet => (registers[2] & VblankFlag) != 0;
 
+    private bool CanTriggerImmediateNmi => IsVblankSet && (Scanline != 261 || Dot != 0);
+
     private bool IsRenderingEnabled => (registers[1] & 0x18) != 0;
 
     private bool IsBackgroundEnabled => (registers[1] & 0x08) != 0;
@@ -255,7 +257,6 @@ public sealed class PpuBus
     private void ClearRenderingFlags()
     {
         registers[2] = (byte)(registers[2] & ~(VblankFlag | SpriteZeroHitFlag | SpriteOverflowFlag));
-        nmiPending = false;
         nmiPollDelay = 0;
         suppressVblankSet = false;
     }
