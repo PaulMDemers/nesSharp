@@ -149,6 +149,25 @@ public sealed class CpuBusTests
         Assert.Equal(1, bus.InstructionAccessCycles);
     }
 
+    [Fact]
+    public void OamDmaServicesPendingDmcDmaDuringTransfer()
+    {
+        var bus = new CpuBus(CreateCartridgeWithResetVector());
+        bus.WriteRaw(0x4013, 0x00);
+        bus.WriteRaw(0x4015, 0x10);
+
+        Assert.True(bus.ApuBus.IsDmcDmaPending);
+
+        bus.BeginCpuInstruction();
+        bus.Write(0x4014, 0x02);
+        bus.EndCpuInstruction();
+
+        Assert.Equal(517, bus.CpuAccessCycles);
+        Assert.Equal(1, bus.InstructionAccessCycles);
+        Assert.False(bus.ApuBus.IsDmcDmaPending);
+        Assert.Equal(0, bus.ApuBus.Dmc.BytesRemaining);
+    }
+
     private static Cartridge CreateCartridgeWithResetVector(ushort resetVector = 0x8000)
     {
         return CreateCartridgeWithVectors(resetVector);

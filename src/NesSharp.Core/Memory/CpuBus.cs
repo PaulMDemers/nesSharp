@@ -173,6 +173,7 @@ public sealed class CpuBus
         for (var i = 0; i < dmaCycles; i++)
         {
             ClockCpuAccess(instructionAccess: false);
+            RunPendingDmcDma();
         }
     }
 }
