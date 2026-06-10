@@ -120,6 +120,35 @@ public sealed class CpuBusTests
         Assert.Equal(0x9000, cpu.ProgramCounter);
     }
 
+    [Fact]
+    public void OamDmaAddsFiveHundredThirteenCyclesWhenAligned()
+    {
+        var bus = new CpuBus(CreateCartridgeWithResetVector());
+
+        bus.BeginCpuInstruction();
+        bus.Write(0x4014, 0x02);
+        bus.EndCpuInstruction();
+
+        Assert.Equal(514, bus.CpuAccessCycles);
+        Assert.Equal(1, bus.InstructionAccessCycles);
+    }
+
+    [Fact]
+    public void OamDmaAddsAlignmentCycleWhenStartingOnGetCycle()
+    {
+        var bus = new CpuBus(CreateCartridgeWithResetVector());
+        bus.BeginCpuInstruction();
+        bus.Read(0x8000);
+        bus.EndCpuInstruction();
+
+        bus.BeginCpuInstruction();
+        bus.Write(0x4014, 0x02);
+        bus.EndCpuInstruction();
+
+        Assert.Equal(515, bus.CpuAccessCycles);
+        Assert.Equal(1, bus.InstructionAccessCycles);
+    }
+
     private static Cartridge CreateCartridgeWithResetVector(ushort resetVector = 0x8000)
     {
         return CreateCartridgeWithVectors(resetVector);

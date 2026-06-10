@@ -38,7 +38,7 @@ Battery-backed saves are loaded from and written to a `.sav` file beside the ROM
 - Implements PPU vblank set/clear behavior, `$2002` read side effects, basic NMI control, and odd-frame clock skip.
 - Advances PPU timing during CPU bus accesses, with raw bus reads preserved for tracing/debug inspection.
 - Models the `$2002` vblank-set suppression window and near-vblank NMI cancellation.
-- Implements CPU-visible PPU VRAM, nametable mirroring, palette mirroring, buffered `$2007` reads, `$2005/$2006` write latch behavior, OAM, OAM DMA, and PPU open-bus decay.
+- Implements CPU-visible PPU VRAM, nametable mirroring, palette mirroring, buffered `$2007` reads, `$2005/$2006` write latch behavior, OAM, phase-aligned OAM DMA cycle timing, and PPU open-bus decay.
 - Implements rudimentary visible-scanline background/sprite 0 pixel overlap detection for `$2002.6` sprite 0 hit.
 - Maintains a 256x240 palette-index framebuffer and can export it as binary PPM through the CLI.
 - Uses a shared NES RGB palette for frame export and visual regression hashing.

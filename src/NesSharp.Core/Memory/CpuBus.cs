@@ -12,6 +12,7 @@ public sealed class CpuBus
     private Action? cpuCycleElapsed;
     private bool trackCpuAccessCycles;
     private int instructionAccessCycles;
+    private bool nextDmaCycleIsGet = true;
 
     public CpuBus(Cartridge.Cartridge cartridge)
         : this(cartridge, new PpuBus(cartridge))
@@ -139,6 +140,7 @@ public sealed class CpuBus
 
         CpuAccessCycles++;
         cpuCycleElapsed?.Invoke();
+        nextDmaCycleIsGet = !nextDmaCycleIsGet;
     }
 
     private void RunPendingDmcDma()
@@ -166,7 +168,8 @@ public sealed class CpuBus
             ppuBus.WriteOamDmaByte(ReadRaw((ushort)(baseAddress + i)));
         }
 
-        for (var i = 0; i < 513; i++)
+        var dmaCycles = nextDmaCycleIsGet ? 514 : 513;
+        for (var i = 0; i < dmaCycles; i++)
         {
             ClockCpuAccess(instructionAccess: false);
         }

@@ -64,7 +64,7 @@ Implement the Ricoh 2A03 CPU as a 6502 variant:
 - All official opcodes and addressing modes.
 - Exact per-instruction cycle counts, including branch and page-crossing penalties.
 - Interrupts: NMI, IRQ, BRK, reset, delayed IRQ inhibition behavior.
-- DMA-visible cycle behavior enough for OAM DMA and later DMC DMA.
+- DMA-visible cycle behavior enough for OAM DMA and later DMC DMA. OAM DMA now accounts for get/put alignment with 513/514-cycle timing.
 - Unofficial opcodes after official opcode tests pass, because some games and later tests need them.
 
 First tests:
@@ -139,7 +139,7 @@ Start with CPU-visible APU behavior, then audio output:
 - Length counters, envelopes, sweeps, linear counter. Pulse/noise length halt, envelope restart/clocking, pulse sweep target calculation, and triangle linear counter reload/control behavior implemented.
 - `$4015` status behavior. Initial channel enable, length-counter status, and status-read frame interrupt clearing implemented.
 - Frame IRQ and DMC IRQ behavior. CPU IRQ servicing, APU frame IRQ delivery, and DMC IRQ flag/status behavior implemented.
-- DMC DMA timing/corruption quirks after basic DMC playback. Basic DMC sample playback and first-pass CPU stall timing are implemented; OAM DMA arbitration, halt alignment nuance, and read-conflict quirks remain pending.
+- DMC DMA timing/corruption quirks after basic DMC playback. Basic DMC sample playback, first-pass CPU stall timing, and OAM DMA get/put alignment are implemented; DMC/OAM overlap, DMC halt alignment nuance, and read-conflict quirks remain pending.
 - Mixer and sample generation for the desktop host. Initial core mono sample buffer, nonlinear mixer, and desktop playback path implemented.
 
 First tests:
