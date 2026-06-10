@@ -490,6 +490,29 @@ public sealed class ApuBusTests
     }
 
     [Fact]
+    public void DmcDmaAddsAlignmentCycleWhenGetPhaseIsMissed()
+    {
+        var bus = new CpuBus(CreateCartridge());
+        bus.WriteRaw(0x4013, 0x00);
+
+        bus.BeginCpuInstruction();
+        bus.Write(0x4015, 0x10);
+        bus.EndCpuInstruction();
+
+        bus.BeginCpuInstruction();
+        bus.Write(0x0000, 0x00);
+        bus.EndCpuInstruction();
+
+        bus.BeginCpuInstruction();
+        bus.Read(0x8000);
+        bus.EndCpuInstruction();
+
+        Assert.Equal(5, bus.CpuAccessCycles);
+        Assert.Equal(1, bus.InstructionAccessCycles);
+        Assert.False(bus.ApuBus.IsDmcDmaPending);
+    }
+
+    [Fact]
     public void DmcReloadDmaAddsFourCpuCycles()
     {
         var bus = new CpuBus(CreateCartridge(dmcSample: 0b0000_0011));

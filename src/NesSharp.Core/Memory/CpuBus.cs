@@ -150,12 +150,14 @@ public sealed class CpuBus
         }
 
         var address = ApuBus.PendingDmcDmaAddress;
-        var cycles = ApuBus.PendingDmcDmaCycles;
-        for (var i = 0; i < cycles; i++)
+        ClockCpuAccess(instructionAccess: false);
+        ClockCpuAccess(instructionAccess: false);
+        if (!nextDmaCycleIsGet)
         {
             ClockCpuAccess(instructionAccess: false);
         }
 
+        ClockCpuAccess(instructionAccess: false);
         ApuBus.CompleteDmcDma(ReadRaw(address));
     }
 
