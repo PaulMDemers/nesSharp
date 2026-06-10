@@ -8,6 +8,13 @@ public sealed class ApuDmcChannel
         190, 160, 142, 128, 106, 84, 72, 54
     ];
 
+    private Func<ushort, byte>? sampleReader;
+    private ushort timerCounter;
+    private byte? sampleBuffer;
+    private byte shiftRegister;
+    private byte bitsRemaining = 8;
+    private bool silence = true;
+
     public bool IrqEnabled { get; private set; }
 
     public bool Loop { get; private set; }
@@ -30,17 +37,33 @@ public sealed class ApuDmcChannel
 
     public bool IsActive => BytesRemaining > 0;
 
+    public bool SampleBufferEmpty => sampleBuffer is null;
+
+    public byte BitsRemaining => bitsRemaining;
+
+    public bool Silence => silence;
+
     public void Reset()
     {
         IrqEnabled = false;
         Loop = false;
         RateIndex = 0;
+        timerCounter = 0;
         OutputLevel = 0;
         SampleAddress = 0xC000;
         CurrentAddress = 0xC000;
         SampleLength = 1;
         BytesRemaining = 0;
         InterruptFlag = false;
+        sampleBuffer = null;
+        shiftRegister = 0;
+        bitsRemaining = 8;
+        silence = true;
+    }
+
+    public void SetSampleReader(Func<ushort, byte> reader)
+    {
+        sampleReader = reader;
     }
 
     public void WriteControl(byte value)
@@ -77,6 +100,8 @@ public sealed class ApuDmcChannel
             {
                 RestartSample();
             }
+
+            TryFillSampleBuffer();
         }
         else
         {
@@ -96,6 +121,75 @@ public sealed class ApuDmcChannel
     }
 
     public void MarkSampleByteRead()
+    {
+        CompleteSampleByteRead();
+    }
+
+    public void ClockTimer()
+    {
+        if (timerCounter == 0)
+        {
+            timerCounter = (ushort)(TimerPeriod - 1);
+            ClockOutputUnit();
+            return;
+        }
+
+        timerCounter--;
+    }
+
+    private void ClockOutputUnit()
+    {
+        if (!silence)
+        {
+            if ((shiftRegister & 0x01) == 0)
+            {
+                if (OutputLevel >= 2)
+                {
+                    OutputLevel -= 2;
+                }
+            }
+            else if (OutputLevel <= 125)
+            {
+                OutputLevel += 2;
+            }
+        }
+
+        shiftRegister >>= 1;
+        bitsRemaining--;
+        if (bitsRemaining == 0)
+        {
+            StartOutputCycle();
+        }
+    }
+
+    private void StartOutputCycle()
+    {
+        bitsRemaining = 8;
+        if (sampleBuffer is null)
+        {
+            silence = true;
+            TryFillSampleBuffer();
+            return;
+        }
+
+        silence = false;
+        shiftRegister = sampleBuffer.Value;
+        sampleBuffer = null;
+        TryFillSampleBuffer();
+    }
+
+    private void TryFillSampleBuffer()
+    {
+        if (sampleBuffer is not null || BytesRemaining == 0)
+        {
+            return;
+        }
+
+        sampleBuffer = sampleReader?.Invoke(CurrentAddress) ?? 0;
+        CompleteSampleByteRead();
+    }
+
+    private void CompleteSampleByteRead()
     {
         if (BytesRemaining == 0)
         {

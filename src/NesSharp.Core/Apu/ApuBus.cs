@@ -50,6 +50,11 @@ public sealed class ApuBus
 
     public int PendingSampleCount => samples.Count;
 
+    public void SetDmcSampleReader(Func<ushort, byte> reader)
+    {
+        Dmc.SetSampleReader(reader);
+    }
+
     public void Reset()
     {
         Pulse1.Reset();
@@ -212,6 +217,7 @@ public sealed class ApuBus
             Noise.ClockTimer();
         }
 
+        Dmc.ClockTimer();
         Triangle.ClockTimer();
     }
 

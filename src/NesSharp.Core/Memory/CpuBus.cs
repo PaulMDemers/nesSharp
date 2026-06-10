@@ -21,6 +21,7 @@ public sealed class CpuBus
     {
         Cartridge = cartridge;
         this.ppuBus = ppuBus;
+        ApuBus.SetDmcSampleReader(ReadRaw);
     }
 
     public Cartridge.Cartridge Cartridge { get; }
