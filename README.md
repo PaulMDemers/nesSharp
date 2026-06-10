@@ -53,6 +53,7 @@ Battery-backed saves are loaded from and written to a `.sav` file beside the ROM
 - Adds first-pass DMC DMA sample-fetch stalls for load and reload fetches, with fetches deferred until a CPU read cycle can be halted.
 - Accounts for DMC DMA dummy/get alignment from the CPU bus DMA phase clock.
 - Services pending DMC DMA during OAM DMA transfers in the first-pass DMA arbiter.
+- Models first-pass DMC DMA controller read conflicts by consuming an extra `$4016/$4017` read.
 - Produces a drainable mono APU sample buffer using channel timer clocks and the NES nonlinear mixer formula.
 - Includes an initial WinForms desktop host with framebuffer display, audio playback, ROM loading, reset/pause actions, and keyboard input for controller 1.
 - Runs desktop emulation on a background frame loop with UI-thread framebuffer presentation.

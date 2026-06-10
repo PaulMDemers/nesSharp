@@ -58,7 +58,7 @@ public sealed class CpuBus
     {
         ClockCpuAccess();
         var value = ReadRaw(address);
-        RunPendingDmcDma();
+        RunPendingDmcDma(address);
         return value;
     }
 
@@ -142,7 +142,7 @@ public sealed class CpuBus
         nextDmaCycleIsGet = !nextDmaCycleIsGet;
     }
 
-    private void RunPendingDmcDma()
+    private void RunPendingDmcDma(ushort? haltedReadAddress = null)
     {
         if (!ApuBus.IsDmcDmaPending)
         {
@@ -158,7 +158,16 @@ public sealed class CpuBus
         }
 
         ClockCpuAccess(instructionAccess: false);
+        ApplyDmcReadConflict(haltedReadAddress);
         ApuBus.CompleteDmcDma(ReadRaw(address));
+    }
+
+    private void ApplyDmcReadConflict(ushort? haltedReadAddress)
+    {
+        if (haltedReadAddress is 0x4016 or 0x4017)
+        {
+            ReadRaw(haltedReadAddress.Value);
+        }
     }
 
     private void RunOamDma(byte page)

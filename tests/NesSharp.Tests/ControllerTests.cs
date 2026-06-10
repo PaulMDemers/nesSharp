@@ -50,6 +50,23 @@ public sealed class ControllerTests
         Assert.Equal([0, 1, 0, 0, 0, 0, 0, 1], bits);
     }
 
+    [Fact]
+    public void DmcDmaDuringControllerReadDeletesOneControllerBit()
+    {
+        var bus = new CpuBus(CreateCartridge());
+        bus.Controller1.State = ControllerButton.A | ControllerButton.Select | ControllerButton.Down;
+        bus.Write(0x4016, 1);
+        bus.Write(0x4016, 0);
+        bus.WriteRaw(0x4013, 0x00);
+        bus.WriteRaw(0x4015, 0x10);
+
+        var first = bus.Read(0x4016) & 0x01;
+        var second = bus.Read(0x4016) & 0x01;
+
+        Assert.Equal(1, first);
+        Assert.Equal(1, second);
+    }
+
     private static Cartridge CreateCartridge()
     {
         var rom = new byte[16 + 16 * 1024 + 8 * 1024];
@@ -62,4 +79,3 @@ public sealed class ControllerTests
         return INesRomLoader.Load(rom);
     }
 }
-
