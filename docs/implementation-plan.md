@@ -74,6 +74,7 @@ First tests:
   - Success code is written into CPU RAM locations `$0002-$0003` in automation mode.
 - `test-roms/nes-test-roms/blargg_nes_cpu_test5/official.nes`
 - `test-roms/nes-test-roms/instr_test-v5/official_only.nes`
+- `test-roms/nes-test-roms/instr_timing/rom_singles/*.nes`
 - `test-roms/nes-test-roms/branch_timing_tests/*.nes`
 
 Deliverable: official CPU instructions pass trace comparison and memory-reported CPU tests.
