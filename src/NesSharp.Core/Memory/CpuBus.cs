@@ -150,34 +150,47 @@ public sealed class CpuBus
         }
 
         var address = ApuBus.PendingDmcDmaAddress;
+        var repeatedReadCount = 0;
         ClockCpuAccess(instructionAccess: false);
+        repeatedReadCount++;
         ClockCpuAccess(instructionAccess: false);
+        repeatedReadCount++;
         if (!nextDmaCycleIsGet)
         {
             ClockCpuAccess(instructionAccess: false);
+            repeatedReadCount++;
         }
 
         ClockCpuAccess(instructionAccess: false);
-        ApplyDmcReadConflict(haltedReadAddress);
+        ApplyDmcReadConflict(haltedReadAddress, repeatedReadCount);
         ApuBus.CompleteDmcDma(ReadRaw(address));
     }
 
-    private void ApplyDmcReadConflict(ushort? haltedReadAddress)
+    private void ApplyDmcReadConflict(ushort? haltedReadAddress, int repeatedReadCount)
     {
         if (haltedReadAddress is null)
         {
             return;
         }
 
-        if (IsDmcRepeatedReadAddress(haltedReadAddress.Value))
+        if (haltedReadAddress is 0x4016 or 0x4017)
         {
             ReadRaw(haltedReadAddress.Value);
+            return;
+        }
+
+        if (IsDmcRepeatedReadAddress(haltedReadAddress.Value))
+        {
+            for (var i = 0; i < repeatedReadCount; i++)
+            {
+                ReadRaw(haltedReadAddress.Value);
+            }
         }
     }
 
     private static bool IsDmcRepeatedReadAddress(ushort address)
     {
-        return address is 0x4015 or 0x4016 or 0x4017 ||
+        return address is 0x4015 ||
             (address is >= 0x2000 and <= 0x3FFF && (address & 0x0007) is 2 or 7);
     }
 

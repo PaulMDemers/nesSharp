@@ -169,7 +169,7 @@ public sealed class CpuBusTests
     }
 
     [Fact]
-    public void DmcDmaDuringPpuDataReadAdvancesPpuReadBuffer()
+    public void DmcDmaDuringPpuDataReadRepeatsSideEffectReads()
     {
         var bus = new CpuBus(CreateCartridgeWithResetVector());
         bus.Write(0x2006, 0x20);
@@ -184,7 +184,7 @@ public sealed class CpuBusTests
 
         Assert.Equal(0x00, bus.Read(0x2007));
 
-        Assert.Equal(0x22, bus.Read(0x2007));
+        Assert.Equal(0x33, bus.Read(0x2007));
     }
 
     private static Cartridge CreateCartridgeWithResetVector(ushort resetVector = 0x8000)
