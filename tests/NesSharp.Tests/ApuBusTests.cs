@@ -98,6 +98,19 @@ public sealed class ApuBusTests
     }
 
     [Fact]
+    public void PulseChannelOutputsEnvelopeWhenSequencerAndLengthAreActive()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x4015, 0x01);
+        apu.WriteRegister(0x4000, 0b1101_1111);
+        apu.WriteRegister(0x4002, 0x08);
+        apu.WriteRegister(0x4003, 0x00);
+
+        Assert.Equal(15, apu.Pulse1.OutputLevel);
+    }
+
+    [Fact]
     public void TriangleLinearCounterRegisterCapturesControlAndReloadValue()
     {
         var apu = new ApuBus();
@@ -414,6 +427,35 @@ public sealed class ApuBusTests
         }
 
         Assert.Equal(0x9000, machine.Cpu.ProgramCounter);
+    }
+
+    [Fact]
+    public void MixerIncludesDmcDirectOutput()
+    {
+        var apu = new ApuBus();
+
+        apu.WriteRegister(0x4011, 0x7F);
+
+        Assert.True(apu.MixSample() > 0);
+    }
+
+    [Fact]
+    public void ClockingApuProducesDrainableSamples()
+    {
+        var apu = new ApuBus();
+        apu.WriteRegister(0x4011, 0x7F);
+
+        for (var i = 0; i < 100; i++)
+        {
+            apu.Clock();
+        }
+
+        Assert.True(apu.PendingSampleCount > 0);
+        var samples = apu.DrainSamples();
+
+        Assert.NotEmpty(samples);
+        Assert.All(samples, sample => Assert.True(sample > 0));
+        Assert.Equal(0, apu.PendingSampleCount);
     }
 
     [Fact]

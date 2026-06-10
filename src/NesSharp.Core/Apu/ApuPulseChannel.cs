@@ -2,12 +2,22 @@ namespace NesSharp.Core.Apu;
 
 public sealed class ApuPulseChannel
 {
+    private static readonly byte[,] DutySequences =
+    {
+        { 0, 0, 0, 0, 0, 0, 0, 1 },
+        { 0, 0, 0, 0, 0, 0, 1, 1 },
+        { 0, 0, 0, 0, 1, 1, 1, 1 },
+        { 1, 1, 1, 1, 1, 1, 0, 0 }
+    };
+
     private readonly bool onesComplementNegate;
     private byte envelopeDivider;
     private byte envelopeDecayLevel;
     private bool envelopeStart;
     private byte sweepDivider;
     private bool sweepReload;
+    private ushort timerCounter;
+    private byte dutyStep;
 
     public ApuPulseChannel(bool onesComplementNegate)
     {
@@ -38,6 +48,8 @@ public sealed class ApuPulseChannel
 
     public byte LengthCounter { get; private set; }
 
+    public byte OutputLevel => IsOutputMuted ? (byte)0 : EnvelopeOutput;
+
     public int SweepTargetPeriod
     {
         get
@@ -49,7 +61,9 @@ public sealed class ApuPulseChannel
         }
     }
 
-    public bool SweepMuted => TimerPeriod < 8 || SweepTargetPeriod > 0x7FF;
+    public bool SweepMuted => TimerPeriod < 8 || (SweepShift != 0 && SweepTargetPeriod > 0x7FF);
+
+    public bool IsOutputMuted => LengthCounter == 0 || SweepMuted || DutySequences[DutyCycle, dutyStep] == 0;
 
     public void Reset()
     {
@@ -68,6 +82,8 @@ public sealed class ApuPulseChannel
         sweepDivider = 0;
         sweepReload = false;
         TimerPeriod = 0;
+        timerCounter = 0;
+        dutyStep = 0;
         LengthCounter = 0;
     }
 
@@ -110,7 +126,20 @@ public sealed class ApuPulseChannel
             LengthCounter = lengthCounterTable[value >> 3];
         }
 
+        dutyStep = 0;
         envelopeStart = true;
+    }
+
+    public void ClockTimer()
+    {
+        if (timerCounter == 0)
+        {
+            timerCounter = TimerPeriod;
+            dutyStep = (byte)((dutyStep - 1) & 0x07);
+            return;
+        }
+
+        timerCounter--;
     }
 
     public void ClockEnvelope()

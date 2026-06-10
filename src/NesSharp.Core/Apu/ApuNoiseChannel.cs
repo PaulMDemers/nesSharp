@@ -11,6 +11,7 @@ public sealed class ApuNoiseChannel
     private byte envelopeDivider;
     private byte envelopeDecayLevel;
     private bool envelopeStart;
+    private ushort timerCounter;
 
     public bool Enabled { get; private set; }
 
@@ -34,6 +35,8 @@ public sealed class ApuNoiseChannel
 
     public bool IsOutputMuted => LengthCounter == 0 || (ShiftRegister & 0x01) != 0;
 
+    public byte OutputLevel => IsOutputMuted ? (byte)0 : EnvelopeOutput;
+
     public void Reset()
     {
         Enabled = false;
@@ -45,6 +48,7 @@ public sealed class ApuNoiseChannel
         envelopeStart = false;
         ModeFlag = false;
         PeriodIndex = 0;
+        timerCounter = 0;
         LengthCounter = 0;
         ShiftRegister = 1;
     }
@@ -121,5 +125,17 @@ public sealed class ApuNoiseChannel
         var tapBit = ModeFlag ? 6 : 1;
         var feedback = (ShiftRegister & 0x01) ^ ((ShiftRegister >> tapBit) & 0x01);
         ShiftRegister = (ushort)((ShiftRegister >> 1) | (feedback << 14));
+    }
+
+    public void ClockTimer()
+    {
+        if (timerCounter == 0)
+        {
+            timerCounter = TimerPeriod;
+            ClockShiftRegister();
+            return;
+        }
+
+        timerCounter--;
     }
 }

@@ -2,7 +2,17 @@ namespace NesSharp.Core.Apu;
 
 public sealed class ApuTriangleChannel
 {
+    private static readonly byte[] Sequence =
+    [
+        15, 14, 13, 12, 11, 10, 9, 8,
+        7, 6, 5, 4, 3, 2, 1, 0,
+        0, 1, 2, 3, 4, 5, 6, 7,
+        8, 9, 10, 11, 12, 13, 14, 15
+    ];
+
     private bool linearCounterReload;
+    private ushort timerCounter;
+    private byte sequenceStep;
 
     public bool Enabled { get; private set; }
 
@@ -18,6 +28,8 @@ public sealed class ApuTriangleChannel
 
     public bool IsSequencerClocking => LengthCounter > 0 && LinearCounter > 0;
 
+    public byte OutputLevel => IsSequencerClocking ? Sequence[sequenceStep] : (byte)0;
+
     public void Reset()
     {
         Enabled = false;
@@ -26,6 +38,8 @@ public sealed class ApuTriangleChannel
         LinearCounter = 0;
         linearCounterReload = false;
         TimerPeriod = 0;
+        timerCounter = 0;
+        sequenceStep = 0;
         LengthCounter = 0;
     }
 
@@ -58,6 +72,22 @@ public sealed class ApuTriangleChannel
         }
 
         linearCounterReload = true;
+    }
+
+    public void ClockTimer()
+    {
+        if (timerCounter == 0)
+        {
+            timerCounter = TimerPeriod;
+            if (IsSequencerClocking && TimerPeriod > 1)
+            {
+                sequenceStep = (byte)((sequenceStep + 1) & 0x1F);
+            }
+
+            return;
+        }
+
+        timerCounter--;
     }
 
     public void ClockLinearCounter()

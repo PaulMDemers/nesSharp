@@ -2,6 +2,8 @@ namespace NesSharp.Core.Apu;
 
 public sealed class ApuBus
 {
+    private const double CpuClockRate = 1_789_773.0;
+    private const double SampleRate = 44_100.0;
     private const byte Pulse1Enable = 0x01;
     private const byte Pulse2Enable = 0x02;
     private const byte TriangleEnable = 0x04;
@@ -22,7 +24,10 @@ public sealed class ApuBus
     private byte statusEnable;
     private byte frameCounterControl;
     private int frameCycle;
+    private ulong cpuCycle;
+    private double sampleAccumulator;
     private bool frameInterrupt;
+    private readonly List<float> samples = [];
 
     public ApuPulseChannel Pulse1 { get; } = new(onesComplementNegate: true);
 
@@ -42,6 +47,8 @@ public sealed class ApuBus
 
     public byte StatusEnable => statusEnable;
 
+    public int PendingSampleCount => samples.Count;
+
     public void Reset()
     {
         Pulse1.Reset();
@@ -52,11 +59,18 @@ public sealed class ApuBus
         WriteStatus(0);
         frameCounterControl = 0;
         frameCycle = 0;
+        cpuCycle = 0;
+        sampleAccumulator = 0;
         frameInterrupt = false;
+        samples.Clear();
     }
 
     public void Clock()
     {
+        cpuCycle++;
+        ClockChannelTimers();
+        MaybeEmitSample();
+
         frameCycle++;
         if (frameCycle == 7_457 || frameCycle == 14_913 || frameCycle == 22_371)
         {
@@ -93,6 +107,13 @@ public sealed class ApuBus
         }
 
         frameCycle = 0;
+    }
+
+    public float[] DrainSamples()
+    {
+        var drained = samples.ToArray();
+        samples.Clear();
+        return drained;
     }
 
     public byte ReadStatus()
@@ -180,6 +201,39 @@ public sealed class ApuBus
     private bool IsFiveStepMode => (frameCounterControl & 0x80) != 0;
 
     private bool IsFrameInterruptInhibited => (frameCounterControl & 0x40) != 0;
+
+    private void ClockChannelTimers()
+    {
+        if ((cpuCycle & 0x01) == 0)
+        {
+            Pulse1.ClockTimer();
+            Pulse2.ClockTimer();
+            Noise.ClockTimer();
+        }
+
+        Triangle.ClockTimer();
+    }
+
+    private void MaybeEmitSample()
+    {
+        sampleAccumulator += SampleRate;
+        if (sampleAccumulator < CpuClockRate)
+        {
+            return;
+        }
+
+        sampleAccumulator -= CpuClockRate;
+        samples.Add(MixSample());
+    }
+
+    public float MixSample()
+    {
+        var pulse = Pulse1.OutputLevel + Pulse2.OutputLevel;
+        var pulseOut = pulse == 0 ? 0 : 95.88 / (8128.0 / pulse + 100);
+        var tndInput = Triangle.OutputLevel / 8227.0 + Noise.OutputLevel / 12241.0 + Dmc.OutputLevel / 22638.0;
+        var tndOut = tndInput == 0 ? 0 : 159.79 / (1 / tndInput + 100);
+        return (float)(pulseOut + tndOut);
+    }
 
     private void WriteStatus(byte value)
     {
