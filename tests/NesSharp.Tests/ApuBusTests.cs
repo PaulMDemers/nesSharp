@@ -458,6 +458,7 @@ public sealed class ApuBusTests
         bus.Write(0x4011, 64);
         bus.Write(0x4013, 0x00);
         bus.Write(0x4015, 0x10);
+        bus.Read(0x8000);
 
         ClockDmcTimerTicks(bus.ApuBus, 10);
 
@@ -474,6 +475,14 @@ public sealed class ApuBusTests
         bus.Write(0x4015, 0x10);
         bus.EndCpuInstruction();
 
+        Assert.Equal(1, bus.CpuAccessCycles);
+        Assert.Equal(1, bus.InstructionAccessCycles);
+        Assert.True(bus.ApuBus.IsDmcDmaPending);
+
+        bus.BeginCpuInstruction();
+        bus.Read(0x8000);
+        bus.EndCpuInstruction();
+
         Assert.Equal(4, bus.CpuAccessCycles);
         Assert.Equal(1, bus.InstructionAccessCycles);
         Assert.False(bus.ApuBus.IsDmcDmaPending);
@@ -488,6 +497,7 @@ public sealed class ApuBusTests
         bus.Write(0x4011, 64);
         bus.Write(0x4013, 0x01);
         bus.Write(0x4015, 0x10);
+        bus.Read(0x8000);
         ClockDmcTimerTicks(bus.ApuBus, 8);
 
         Assert.True(bus.ApuBus.IsDmcDmaPending);

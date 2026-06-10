@@ -50,7 +50,7 @@ Battery-backed saves are loaded from and written to a `.sav` file beside the ROM
 - Models initial triangle-channel register state, timer period, length counter, and linear counter reload/control behavior.
 - Models initial noise-channel register state, period/mode, length counter, envelope restart/clocking, and shift-register feedback.
 - Models initial DMC register state, direct output level, sample address/length, status bit, looping, IRQ flag behavior, and mapper-backed delta sample playback.
-- Adds first-pass DMC DMA sample-fetch stalls for load and reload fetches.
+- Adds first-pass DMC DMA sample-fetch stalls for load and reload fetches, with fetches deferred until a CPU read cycle can be halted.
 - Produces a drainable mono APU sample buffer using channel timer clocks and the NES nonlinear mixer formula.
 - Includes an initial WinForms desktop host with framebuffer display, audio playback, ROM loading, reset/pause actions, and keyboard input for controller 1.
 - Runs desktop emulation on a background frame loop with UI-thread framebuffer presentation.

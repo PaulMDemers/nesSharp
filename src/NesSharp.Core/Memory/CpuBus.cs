@@ -80,7 +80,6 @@ public sealed class CpuBus
     {
         ClockCpuAccess();
         WriteRaw(address, value);
-        RunPendingDmcDma();
     }
 
     public void WriteRaw(ushort address, byte value)
