@@ -139,7 +139,7 @@ Start with CPU-visible APU behavior, then audio output:
 - Length counters, envelopes, sweeps, linear counter. Pulse/noise length halt, envelope restart/clocking, pulse sweep target calculation, and triangle linear counter reload/control behavior implemented.
 - `$4015` status behavior. Initial channel enable, length-counter status, and status-read frame interrupt clearing implemented.
 - Frame IRQ and DMC IRQ behavior. CPU IRQ servicing, APU frame IRQ delivery, and DMC IRQ flag/status behavior implemented.
-- DMC DMA timing/corruption quirks after basic DMC playback. Basic DMC sample playback, first-pass CPU stall timing, CPU-read halt deferral, DMC dummy/get alignment, OAM DMA get/put alignment, first-pass DMC/OAM overlap, controller conflicts, and no-op-counted repeated reads for side-effect registers are implemented; delayed halt scheduling nuance remains pending.
+- DMC DMA timing/corruption quirks after basic DMC playback. Basic DMC sample playback, first-pass CPU stall timing, delayed CPU-read halt deferral, DMC dummy/get alignment, OAM DMA get/put alignment, first-pass DMC/OAM overlap, controller conflicts, and no-op-counted repeated reads for side-effect registers are implemented.
 - Mixer and sample generation for the desktop host. Initial core mono sample buffer, nonlinear mixer, and desktop playback path implemented.
 
 First tests:

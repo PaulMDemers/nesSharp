@@ -59,6 +59,8 @@ public sealed class ControllerTests
         bus.Write(0x4016, 0);
         bus.WriteRaw(0x4013, 0x00);
         bus.WriteRaw(0x4015, 0x10);
+        bus.ApuBus.Clock();
+        bus.ApuBus.Clock();
 
         var first = bus.Read(0x4016) & 0x01;
         var second = bus.Read(0x4016) & 0x01;

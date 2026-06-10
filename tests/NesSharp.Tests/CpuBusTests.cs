@@ -153,6 +153,7 @@ public sealed class CpuBusTests
     public void OamDmaServicesPendingDmcDmaDuringTransfer()
     {
         var bus = new CpuBus(CreateCartridgeWithResetVector());
+        bus.SetCpuCycleCallback(bus.ApuBus.Clock);
         bus.WriteRaw(0x4013, 0x00);
         bus.WriteRaw(0x4015, 0x10);
 
@@ -181,6 +182,8 @@ public sealed class CpuBusTests
         bus.Write(0x2006, 0x00);
         bus.WriteRaw(0x4013, 0x00);
         bus.WriteRaw(0x4015, 0x10);
+        bus.ApuBus.Clock();
+        bus.ApuBus.Clock();
 
         Assert.Equal(0x00, bus.Read(0x2007));
 

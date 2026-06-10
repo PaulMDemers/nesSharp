@@ -15,6 +15,7 @@ public sealed class ApuDmcChannel
     private bool silence = true;
     private ushort pendingSampleAddress;
     private bool sampleFetchPending;
+    private byte sampleFetchDelayCycles;
 
     public bool IrqEnabled { get; private set; }
 
@@ -39,6 +40,8 @@ public sealed class ApuDmcChannel
     public bool IsActive => BytesRemaining > 0;
 
     public bool IsSampleFetchPending => sampleFetchPending;
+
+    public bool IsSampleFetchReady => sampleFetchPending && sampleFetchDelayCycles == 0;
 
     public ushort PendingSampleAddress => pendingSampleAddress;
 
@@ -66,6 +69,7 @@ public sealed class ApuDmcChannel
         silence = true;
         pendingSampleAddress = 0;
         sampleFetchPending = false;
+        sampleFetchDelayCycles = 0;
     }
 
     public void WriteControl(byte value)
@@ -109,6 +113,7 @@ public sealed class ApuDmcChannel
         {
             BytesRemaining = 0;
             sampleFetchPending = false;
+            sampleFetchDelayCycles = 0;
         }
     }
 
@@ -143,8 +148,17 @@ public sealed class ApuDmcChannel
         }
 
         sampleFetchPending = false;
+        sampleFetchDelayCycles = 0;
         sampleBuffer = value;
         CompleteSampleByteRead();
+    }
+
+    public void ClockDmaDelay()
+    {
+        if (sampleFetchDelayCycles > 0)
+        {
+            sampleFetchDelayCycles--;
+        }
     }
 
     public void ClockTimer()
@@ -209,6 +223,7 @@ public sealed class ApuDmcChannel
 
         pendingSampleAddress = CurrentAddress;
         sampleFetchPending = true;
+        sampleFetchDelayCycles = 2;
     }
 
     private void CompleteSampleByteRead()

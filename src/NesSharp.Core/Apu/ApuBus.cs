@@ -52,6 +52,8 @@ public sealed class ApuBus
 
     public bool IsDmcDmaPending => Dmc.IsSampleFetchPending;
 
+    public bool IsDmcDmaReady => Dmc.IsSampleFetchReady;
+
     public ushort PendingDmcDmaAddress => Dmc.PendingSampleAddress;
 
     public void CompleteDmcDma(byte value)
@@ -78,6 +80,7 @@ public sealed class ApuBus
     public void Clock()
     {
         cpuCycle++;
+        Dmc.ClockDmaDelay();
         ClockChannelTimers();
         MaybeEmitSample();
 

@@ -144,7 +144,7 @@ public sealed class CpuBus
 
     private void RunPendingDmcDma(ushort? haltedReadAddress = null)
     {
-        if (!ApuBus.IsDmcDmaPending)
+        if (!ApuBus.IsDmcDmaReady)
         {
             return;
         }

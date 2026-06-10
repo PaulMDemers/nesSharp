@@ -337,6 +337,7 @@ public sealed class ApuBusTests
         Assert.Equal(33, apu.Dmc.BytesRemaining);
         Assert.True(apu.Dmc.SampleBufferEmpty);
         Assert.True(apu.IsDmcDmaPending);
+        Assert.False(apu.IsDmcDmaReady);
         Assert.Equal(0xC040, apu.PendingDmcDmaAddress);
         Assert.Equal(0x10, apu.ReadStatus() & 0x10);
     }
@@ -458,6 +459,7 @@ public sealed class ApuBusTests
         bus.Write(0x4011, 64);
         bus.Write(0x4013, 0x00);
         bus.Write(0x4015, 0x10);
+        ClockDmcDmaReady(bus.ApuBus);
         bus.Read(0x8000);
 
         ClockDmcTimerTicks(bus.ApuBus, 10);
@@ -478,6 +480,10 @@ public sealed class ApuBusTests
         Assert.Equal(1, bus.CpuAccessCycles);
         Assert.Equal(1, bus.InstructionAccessCycles);
         Assert.True(bus.ApuBus.IsDmcDmaPending);
+        Assert.False(bus.ApuBus.IsDmcDmaReady);
+
+        ClockDmcDmaReady(bus.ApuBus);
+        Assert.True(bus.ApuBus.IsDmcDmaReady);
 
         bus.BeginCpuInstruction();
         bus.Read(0x8000);
@@ -498,6 +504,7 @@ public sealed class ApuBusTests
         bus.BeginCpuInstruction();
         bus.Write(0x4015, 0x10);
         bus.EndCpuInstruction();
+        ClockDmcDmaReady(bus.ApuBus);
 
         bus.BeginCpuInstruction();
         bus.Write(0x0000, 0x00);
@@ -520,8 +527,10 @@ public sealed class ApuBusTests
         bus.Write(0x4011, 64);
         bus.Write(0x4013, 0x01);
         bus.Write(0x4015, 0x10);
+        ClockDmcDmaReady(bus.ApuBus);
         bus.Read(0x8000);
         ClockDmcTimerTicks(bus.ApuBus, 8);
+        ClockDmcDmaReady(bus.ApuBus);
 
         Assert.True(bus.ApuBus.IsDmcDmaPending);
 
@@ -697,6 +706,12 @@ public sealed class ApuBusTests
         {
             apu.Clock();
         }
+    }
+
+    private static void ClockDmcDmaReady(ApuBus apu)
+    {
+        apu.Clock();
+        apu.Clock();
     }
 
     private static Cartridge CreateLoopCartridge(ushort irqVector = 0x8000)
