@@ -125,8 +125,8 @@ First tests:
 - `ppu_read_buffer`
 - `ppu_vbl_nmi`
 - `vbl_nmi_timing`
-- `sprite_hit_tests_2005.10.05`
-- `sprite_overflow_tests`
+- `sprite_hit_tests_2005.10.05`: all ROMs pass through the `$00F8` result runner.
+- `sprite_overflow_tests`: basics/details pass; timing, obscure, and emulator recalculation cases remain the next overflow milestone.
 
 Deliverable: NROM homebrew/test ROMs render stable frames and PPU tests report pass or produce expected screenshots.
 

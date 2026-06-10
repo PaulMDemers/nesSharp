@@ -595,25 +595,35 @@ public sealed class PpuBus
 
     private PpuPixel GetSpritePixelWithPalette(int x, int y)
     {
-        if (!IsSpriteRenderingEnabled || (x < 8 && !ShowSpritesInLeftColumn))
+        if (!IsRenderingEnabled)
         {
             return PpuPixel.Transparent;
         }
 
+        var canRenderSpritePixels = IsSpriteRenderingEnabled && (x >= 8 || ShowSpritesInLeftColumn);
         var spritesOnScanline = 0;
+        var renderSpritesOnScanline = 0;
         var selectedPixel = PpuPixel.Transparent;
         for (var spriteIndex = 0; spriteIndex < 64; spriteIndex++)
         {
-            if (!IsSpriteVerticallyInRange(spriteIndex, y))
+            if (IsSpriteInEvaluationRange(spriteIndex, y))
+            {
+                spritesOnScanline++;
+                if (spritesOnScanline > 8)
+                {
+                    registers[2] |= SpriteOverflowFlag;
+                }
+            }
+
+            if (!canRenderSpritePixels || !IsSpriteInRenderRange(spriteIndex, y))
             {
                 continue;
             }
 
-            spritesOnScanline++;
-            if (spritesOnScanline > 8)
+            renderSpritesOnScanline++;
+            if (renderSpritesOnScanline > 8)
             {
-                registers[2] |= SpriteOverflowFlag;
-                break;
+                continue;
             }
 
             var pixel = GetSpritePixel(spriteIndex, x, y);
@@ -626,10 +636,18 @@ public sealed class PpuBus
         return selectedPixel;
     }
 
-    private bool IsSpriteVerticallyInRange(int spriteIndex, int y)
+    private bool IsSpriteInRenderRange(int spriteIndex, int y)
     {
         var offset = spriteIndex * 4;
         var spriteY = oam[offset] + 1;
+        var height = (registers[0] & 0x20) == 0 ? 8 : 16;
+        return y >= spriteY && y < spriteY + height;
+    }
+
+    private bool IsSpriteInEvaluationRange(int spriteIndex, int y)
+    {
+        var offset = spriteIndex * 4;
+        var spriteY = oam[offset];
         var height = (registers[0] & 0x20) == 0 ? 8 : 16;
         return y >= spriteY && y < spriteY + height;
     }

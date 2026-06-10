@@ -33,13 +33,14 @@ Battery-backed saves are loaded from and written to a `.sav` file beside the ROM
 - Executes the 6502 official opcode set and the stable unofficial opcodes needed by `nestest`.
 - Matches all 8,991 instruction states in `nestest.log` when started at `$C000`.
 - Runs blargg-style test ROMs headlessly by reading the `$6000` status/output convention.
+- Runs sprite hit/overflow test ROMs that report final results through `$00F8`.
 - Passes all 16 NROM `instr_test-v5/rom_singles` CPU instruction ROMs.
 - Tracks basic NTSC PPU dot/scanline/frame timing.
 - Implements PPU vblank set/clear behavior, `$2002` read side effects, basic NMI control, and odd-frame clock skip.
 - Advances PPU timing during CPU bus accesses, with raw bus reads preserved for tracing/debug inspection.
 - Models the `$2002` vblank-set suppression window and near-vblank NMI cancellation.
 - Implements CPU-visible PPU VRAM, nametable mirroring, palette mirroring, buffered `$2007` reads, `$2005/$2006` write latch behavior, OAM, phase-aligned OAM DMA cycle timing, and PPU open-bus decay.
-- Implements pragmatic visible-scanline sprite composition, sprite/background priority, sprite flipping, 8x16 sprite tile selection, first-pass 8-sprite scanline limiting, sprite overflow status, and sprite 0 hit detection.
+- Implements pragmatic visible-scanline sprite composition, sprite/background priority, sprite flipping, 8x16 sprite tile selection, first-pass 8-sprite scanline limiting, sprite overflow status, and sprite 0 hit detection. All `sprite_hit_tests_2005.10.05` ROMs and `sprite_overflow_tests` basics/details currently pass.
 - Maintains a 256x240 palette-index framebuffer and can export it as binary PPM through the CLI.
 - Uses a shared NES RGB palette for frame export and visual regression hashing.
 - Includes a deterministic RGB hash regression for `ppu_read_buffer` frame 120.
@@ -65,6 +66,6 @@ Battery-backed saves are loaded from and written to a `.sav` file beside the ROM
 
 ## Known Next Accuracy Work
 
-The remaining `ppu_vbl_nmi` timing ROMs need tighter CPU/PPU phase modeling around NMI recognition, pre-render clear timing, and rendering-enable odd-frame skip timing. Rendering is currently pragmatic rather than cycle-perfect: it is good enough for first framebuffer inspection and focused sprite/background tests, but sprite evaluation, scrolling during rendering, and fetch timing still need refinement.
+The remaining `ppu_vbl_nmi` timing ROMs need tighter CPU/PPU phase modeling around NMI recognition, pre-render clear timing, and rendering-enable odd-frame skip timing. Rendering is currently pragmatic rather than cycle-perfect: it is good enough for first framebuffer inspection and focused sprite/background tests, but sprite overflow timing/pathological evaluation, scrolling during rendering, and fetch timing still need refinement.
 
 The staged implementation plan is in `docs/implementation-plan.md`.
