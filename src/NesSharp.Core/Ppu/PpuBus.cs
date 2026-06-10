@@ -21,6 +21,7 @@ public sealed class PpuBus
     private readonly byte[] framebuffer = new byte[ScreenWidth * ScreenHeight];
     private readonly byte[] registers = new byte[8];
     private bool nmiPending;
+    private int nmiDelayDots;
     private int nmiPollDelay;
     private bool suppressVblankSet;
     private byte oamAddress;
@@ -89,7 +90,15 @@ public sealed class PpuBus
                 if (!wasNmiEnabled && IsNmiEnabled && CanTriggerImmediateNmi)
                 {
                     nmiPending = true;
+                    nmiDelayDots = 0;
                     nmiPollDelay = 1;
+                }
+                else if (wasNmiEnabled && !IsNmiEnabled && CanCancelVblankStartNmi)
+                {
+                    nmiPending = false;
+                    nmiDelayDots = 0;
+                    nmiPollDelay = 0;
+                    NmiSuppressed?.Invoke();
                 }
 
                 break;
@@ -134,6 +143,7 @@ public sealed class PpuBus
         Frame = 0;
         TotalDots = 0;
         nmiPending = false;
+        nmiDelayDots = 0;
         nmiPollDelay = 0;
         suppressVblankSet = false;
         oamAddress = 0;
@@ -154,6 +164,8 @@ public sealed class PpuBus
     {
         for (var i = 0; i < ppuCycles; i++)
         {
+            TickNmiDelay();
+
             if (Scanline == 261 && Dot == 339 && IsOddFrame && IsRenderingEnabled)
             {
                 TotalDots++;
@@ -205,6 +217,11 @@ public sealed class PpuBus
             return false;
         }
 
+        if (nmiDelayDots > 0)
+        {
+            return false;
+        }
+
         if (nmiPollDelay > 0)
         {
             nmiPollDelay--;
@@ -230,6 +247,8 @@ public sealed class PpuBus
 
     private bool CanTriggerImmediateNmi => IsVblankSet && (Scanline != 261 || Dot != 0);
 
+    private bool CanCancelVblankStartNmi => IsVblankSet && Scanline == 241 && Dot <= 2;
+
     private bool IsRenderingEnabled => (registers[1] & 0x18) != 0;
 
     private bool IsBackgroundEnabled => (registers[1] & 0x08) != 0;
@@ -251,12 +270,14 @@ public sealed class PpuBus
         if (IsNmiEnabled)
         {
             nmiPending = true;
+            nmiDelayDots = 2;
         }
     }
 
     private void ClearRenderingFlags()
     {
         registers[2] = (byte)(registers[2] & ~(VblankFlag | SpriteZeroHitFlag | SpriteOverflowFlag));
+        nmiDelayDots = 0;
         nmiPollDelay = 0;
         suppressVblankSet = false;
     }
@@ -267,6 +288,7 @@ public sealed class PpuBus
         {
             suppressVblankSet = true;
             nmiPending = false;
+            nmiDelayDots = 0;
             nmiPollDelay = 0;
             NmiSuppressed?.Invoke();
             return;
@@ -275,8 +297,17 @@ public sealed class PpuBus
         if (IsVblankSet && TotalDots >= vblankSetTotalDots && TotalDots - vblankSetTotalDots <= 1)
         {
             nmiPending = false;
+            nmiDelayDots = 0;
             nmiPollDelay = 0;
             NmiSuppressed?.Invoke();
+        }
+    }
+
+    private void TickNmiDelay()
+    {
+        if (nmiDelayDots > 0)
+        {
+            nmiDelayDots--;
         }
     }
 
