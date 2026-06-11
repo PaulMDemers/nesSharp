@@ -39,6 +39,7 @@ public sealed class PpuBus
     private ushort temporaryVramAddress;
     private bool writeToggle;
     private bool renderBackgroundFromCurrentVramAddress;
+    private BackgroundTileLatch backgroundTileLatch;
     private ulong vblankSetTotalDots;
 
     public PpuBus(Cartridge.Cartridge cartridge)
@@ -171,6 +172,7 @@ public sealed class PpuBus
         temporaryVramAddress = 0;
         writeToggle = false;
         renderBackgroundFromCurrentVramAddress = false;
+        backgroundTileLatch = default;
         vblankSetTotalDots = 0;
     }
 
@@ -482,6 +484,7 @@ public sealed class PpuBus
         temporaryVramAddress = (ushort)((temporaryVramAddress & 0x7F00) | value);
         currentVramAddress = temporaryVramAddress;
         renderBackgroundFromCurrentVramAddress = currentVramAddress < 0x2000;
+        backgroundTileLatch = default;
         writeToggle = false;
     }
 
@@ -683,27 +686,42 @@ public sealed class PpuBus
     {
         var tileColumnOffset = (fineX + (x & 0x07)) >> 3;
         var renderAddress = OffsetBackgroundAddress(currentVramAddress, tileColumnOffset);
-        var coarseX = renderAddress & 0x001F;
-        var coarseY = (renderAddress >> 5) & 0x001F;
-        var table = (renderAddress >> 10) & 0x03;
-        var fineY = (renderAddress >> 12) & 0x07;
-        var tileIndex = ReadMemory((ushort)(0x2000 | (renderAddress & 0x0FFF)));
-        var patternBase = (registers[0] & 0x10) == 0 ? 0x0000 : 0x1000;
-        var patternAddress = (ushort)(patternBase + tileIndex * 16 + fineY);
-        var low = cartridge.PpuRead(patternAddress);
-        var high = cartridge.PpuRead((ushort)(patternAddress + 8));
+        var latch = GetCurrentBackgroundTileLatch(renderAddress);
         var bit = 7 - ((fineX + (x & 0x07)) & 0x07);
-        var color = ((low >> bit) & 0x01) | (((high >> bit) & 0x01) << 1);
+        var color = ((latch.PatternLow >> bit) & 0x01) | (((latch.PatternHigh >> bit) & 0x01) << 1);
         if (color == 0)
         {
             return PpuPixel.Transparent;
         }
 
+        return new PpuPixel(color, (ushort)(0x3F00 + latch.Palette * 4 + color), false);
+    }
+
+    private BackgroundTileLatch GetCurrentBackgroundTileLatch(ushort renderAddress)
+    {
+        var key = (ushort)(renderAddress & 0x7FFF);
+        if (backgroundTileLatch.IsValid && backgroundTileLatch.RenderAddress == key)
+        {
+            return backgroundTileLatch;
+        }
+
+        var coarseX = key & 0x001F;
+        var coarseY = (key >> 5) & 0x001F;
+        var table = (key >> 10) & 0x03;
+        var fineY = (key >> 12) & 0x07;
+        var tileIndex = ReadMemory((ushort)(0x2000 | (key & 0x0FFF)));
+        var patternBase = (registers[0] & 0x10) == 0 ? 0x0000 : 0x1000;
+        var patternAddress = (ushort)(patternBase + tileIndex * 16 + fineY);
         var attributeAddress = (ushort)(0x23C0 | (table << 10) | ((coarseY >> 2) << 3) | (coarseX >> 2));
         var attribute = ReadMemory(attributeAddress);
         var shift = ((coarseY & 0x02) << 1) | (coarseX & 0x02);
-        var palette = (attribute >> shift) & 0x03;
-        return new PpuPixel(color, (ushort)(0x3F00 + palette * 4 + color), false);
+        backgroundTileLatch = new BackgroundTileLatch(
+            true,
+            key,
+            cartridge.PpuRead(patternAddress),
+            cartridge.PpuRead((ushort)(patternAddress + 8)),
+            (byte)((attribute >> shift) & 0x03));
+        return backgroundTileLatch;
     }
 
     private PpuPixel GetBackgroundPixelFromScrollCoordinates(int x, int y)
@@ -960,4 +978,6 @@ public sealed class PpuBus
     {
         public static readonly PpuPixel Transparent = new(0, 0x3F00, false);
     }
+
+    private readonly record struct BackgroundTileLatch(bool IsValid, ushort RenderAddress, byte PatternLow, byte PatternHigh, byte Palette);
 }

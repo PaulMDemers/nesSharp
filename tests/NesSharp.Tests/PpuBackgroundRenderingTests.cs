@@ -23,6 +23,25 @@ public sealed class PpuBackgroundRenderingTests
         Assert.Equal(0x22, ppu.Framebuffer[3]);
     }
 
+    [Fact]
+    public void BackgroundRenderingKeepsLoadedTileBitsForCurrentTile()
+    {
+        var ppu = CreatePpu();
+        WritePatternRow(ppu, tile: 1, row: 0, low: 0xFF, high: 0x00);
+        WritePalette(ppu, 0x3F01, 0x22);
+        WriteNametableTile(ppu, x: 1, y: 0, tile: 1);
+        EnableBackground(ppu);
+        ppu.Clock(2);
+        SetVramAddress(ppu, 0x0001);
+
+        ppu.Clock(1);
+        WritePatternRow(ppu, tile: 1, row: 0, low: 0x00, high: 0x00);
+        ppu.Clock(1);
+
+        Assert.Equal(0x22, ppu.Framebuffer[2]);
+        Assert.Equal(0x22, ppu.Framebuffer[3]);
+    }
+
     private static PpuBus CreatePpu() => new(CreateCartridge());
 
     private static void EnableBackground(PpuBus ppu)
