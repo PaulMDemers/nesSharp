@@ -41,6 +41,7 @@ public sealed class PpuBus
     private bool renderBackgroundFromCurrentVramAddress;
     private BackgroundTileLatch backgroundTileLatch;
     private BackgroundFetchPipeline backgroundFetchPipeline;
+    private BackgroundShiftRegister backgroundShiftRegister;
     private ulong vblankSetTotalDots;
 
     public PpuBus(Cartridge.Cartridge cartridge)
@@ -175,6 +176,7 @@ public sealed class PpuBus
         renderBackgroundFromCurrentVramAddress = false;
         backgroundTileLatch = default;
         backgroundFetchPipeline = default;
+        backgroundShiftRegister = default;
         vblankSetTotalDots = 0;
     }
 
@@ -272,6 +274,12 @@ public sealed class PpuBus
                 {
                     PatternHigh = FetchBackgroundPatternHigh(backgroundFetchPipeline.PatternAddress)
                 };
+                backgroundShiftRegister = new BackgroundShiftRegister(
+                    true,
+                    backgroundFetchPipeline.RenderAddress,
+                    backgroundFetchPipeline.PatternLow,
+                    backgroundFetchPipeline.PatternHigh,
+                    backgroundFetchPipeline.AttributePalette);
                 break;
         }
     }
@@ -532,6 +540,7 @@ public sealed class PpuBus
         currentVramAddress = temporaryVramAddress;
         renderBackgroundFromCurrentVramAddress = currentVramAddress < 0x2000;
         backgroundTileLatch = default;
+        backgroundShiftRegister = default;
         writeToggle = false;
     }
 
@@ -747,6 +756,16 @@ public sealed class PpuBus
     private BackgroundTileLatch GetCurrentBackgroundTileLatch(ushort renderAddress)
     {
         var key = (ushort)(renderAddress & 0x7FFF);
+        if (backgroundShiftRegister.IsValid && backgroundShiftRegister.RenderAddress == key)
+        {
+            return new BackgroundTileLatch(
+                true,
+                key,
+                backgroundShiftRegister.PatternLow,
+                backgroundShiftRegister.PatternHigh,
+                backgroundShiftRegister.Palette);
+        }
+
         if (backgroundTileLatch.IsValid && backgroundTileLatch.RenderAddress == key)
         {
             return backgroundTileLatch;
@@ -1060,4 +1079,11 @@ public sealed class PpuBus
         ushort PatternAddress,
         byte PatternLow,
         byte PatternHigh);
+
+    private readonly record struct BackgroundShiftRegister(
+        bool IsValid,
+        ushort RenderAddress,
+        byte PatternLow,
+        byte PatternHigh,
+        byte Palette);
 }
