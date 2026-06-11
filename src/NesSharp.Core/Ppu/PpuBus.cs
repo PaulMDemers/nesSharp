@@ -20,6 +20,9 @@ public sealed class PpuBus
     private readonly byte[] oam = new byte[256];
     private readonly byte[] framebuffer = new byte[ScreenWidth * ScreenHeight];
     private readonly byte[] registers = new byte[8];
+    private byte effectiveMask;
+    private byte pendingMask;
+    private int pendingMaskDelayDots;
     private bool nmiPending;
     private int nmiDelayDots;
     private int nmiPollDelay;
@@ -125,6 +128,12 @@ public sealed class PpuBus
                 WritePpuData(value);
                 registers[register] = value;
                 break;
+            case 1:
+                registers[register] = value;
+                pendingMask = value;
+                // PPUMASK rendering bits take effect a couple of dots after the CPU write.
+                pendingMaskDelayDots = 2;
+                break;
             default:
                 registers[register] = value;
                 break;
@@ -138,6 +147,9 @@ public sealed class PpuBus
         Array.Clear(paletteRam);
         Array.Clear(oam);
         Array.Clear(framebuffer);
+        effectiveMask = 0;
+        pendingMask = 0;
+        pendingMaskDelayDots = 0;
         Dot = 0;
         Scanline = 0;
         Frame = 0;
@@ -172,6 +184,7 @@ public sealed class PpuBus
                 Dot = 0;
                 Scanline = 0;
                 Frame++;
+                TickMaskDelay();
                 continue;
             }
 
@@ -207,6 +220,7 @@ public sealed class PpuBus
             EvaluateSpriteOverflow();
             RenderCurrentPixel();
             EvaluateSpriteZeroHit();
+            TickMaskDelay();
         }
     }
 
@@ -249,15 +263,15 @@ public sealed class PpuBus
 
     private bool CanCancelVblankStartNmi => IsVblankSet && Scanline == 241 && Dot <= 2;
 
-    private bool IsRenderingEnabled => (registers[1] & 0x18) != 0;
+    private bool IsRenderingEnabled => (effectiveMask & 0x18) != 0;
 
-    private bool IsBackgroundEnabled => (registers[1] & 0x08) != 0;
+    private bool IsBackgroundEnabled => (effectiveMask & 0x08) != 0;
 
-    private bool IsSpriteRenderingEnabled => (registers[1] & 0x10) != 0;
+    private bool IsSpriteRenderingEnabled => (effectiveMask & 0x10) != 0;
 
-    private bool ShowBackgroundInLeftColumn => (registers[1] & 0x02) != 0;
+    private bool ShowBackgroundInLeftColumn => (effectiveMask & 0x02) != 0;
 
-    private bool ShowSpritesInLeftColumn => (registers[1] & 0x04) != 0;
+    private bool ShowSpritesInLeftColumn => (effectiveMask & 0x04) != 0;
 
     private bool IsOddFrame => (Frame & 1) != 0;
 
@@ -308,6 +322,20 @@ public sealed class PpuBus
         if (nmiDelayDots > 0)
         {
             nmiDelayDots--;
+        }
+    }
+
+    private void TickMaskDelay()
+    {
+        if (pendingMaskDelayDots <= 0)
+        {
+            return;
+        }
+
+        pendingMaskDelayDots--;
+        if (pendingMaskDelayDots == 0)
+        {
+            effectiveMask = pendingMask;
         }
     }
 

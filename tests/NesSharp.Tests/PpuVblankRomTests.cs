@@ -15,7 +15,8 @@ public sealed class PpuVblankRomTests
         "06-suppression.nes",
         "07-nmi_on_timing.nes",
         "08-nmi_off_timing.nes",
-        "09-even_odd_frames.nes"
+        "09-even_odd_frames.nes",
+        "10-even_odd_timing.nes"
     };
 
     [Theory]
