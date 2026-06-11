@@ -228,6 +228,7 @@ public sealed class PpuBus
             EvaluateSpriteOverflow();
             RunBackgroundFetchStep();
             RenderCurrentPixel();
+            ShiftBackgroundRegisters();
             EvaluateSpriteZeroHit();
             UpdateRenderingVramAddress();
             TickMaskDelay();
@@ -279,9 +280,26 @@ public sealed class PpuBus
                     backgroundFetchPipeline.RenderAddress,
                     backgroundFetchPipeline.PatternLow,
                     backgroundFetchPipeline.PatternHigh,
-                    backgroundFetchPipeline.AttributePalette);
+                    backgroundFetchPipeline.AttributePalette,
+                    Shift: 0);
                 break;
         }
+    }
+
+    private void ShiftBackgroundRegisters()
+    {
+        if (!renderBackgroundFromCurrentVramAddress ||
+            !backgroundShiftRegister.IsValid ||
+            Scanline is < 0 or >= ScreenHeight ||
+            Dot is < 1 or > ScreenWidth)
+        {
+            return;
+        }
+
+        backgroundShiftRegister = backgroundShiftRegister with
+        {
+            Shift = backgroundShiftRegister.Shift + 1
+        };
     }
 
     public bool PollNmi()
@@ -742,6 +760,12 @@ public sealed class PpuBus
     {
         var tileColumnOffset = (fineX + (x & 0x07)) >> 3;
         var renderAddress = OffsetBackgroundAddress(currentVramAddress, tileColumnOffset);
+        var key = (ushort)(renderAddress & 0x7FFF);
+        if (backgroundShiftRegister.IsValid && backgroundShiftRegister.RenderAddress == key)
+        {
+            return GetBackgroundPixelFromShiftRegister();
+        }
+
         var latch = GetCurrentBackgroundTileLatch(renderAddress);
         var bit = 7 - ((fineX + (x & 0x07)) & 0x07);
         var color = ((latch.PatternLow >> bit) & 0x01) | (((latch.PatternHigh >> bit) & 0x01) << 1);
@@ -753,19 +777,22 @@ public sealed class PpuBus
         return new PpuPixel(color, (ushort)(0x3F00 + latch.Palette * 4 + color), false);
     }
 
+    private PpuPixel GetBackgroundPixelFromShiftRegister()
+    {
+        var bit = 7 - ((fineX + backgroundShiftRegister.Shift) & 0x07);
+        var color = ((backgroundShiftRegister.PatternLow >> bit) & 0x01) |
+            (((backgroundShiftRegister.PatternHigh >> bit) & 0x01) << 1);
+        if (color == 0)
+        {
+            return PpuPixel.Transparent;
+        }
+
+        return new PpuPixel(color, (ushort)(0x3F00 + backgroundShiftRegister.Palette * 4 + color), false);
+    }
+
     private BackgroundTileLatch GetCurrentBackgroundTileLatch(ushort renderAddress)
     {
         var key = (ushort)(renderAddress & 0x7FFF);
-        if (backgroundShiftRegister.IsValid && backgroundShiftRegister.RenderAddress == key)
-        {
-            return new BackgroundTileLatch(
-                true,
-                key,
-                backgroundShiftRegister.PatternLow,
-                backgroundShiftRegister.PatternHigh,
-                backgroundShiftRegister.Palette);
-        }
-
         if (backgroundTileLatch.IsValid && backgroundTileLatch.RenderAddress == key)
         {
             return backgroundTileLatch;
@@ -1085,5 +1112,6 @@ public sealed class PpuBus
         ushort RenderAddress,
         byte PatternLow,
         byte PatternHigh,
-        byte Palette);
+        byte Palette,
+        int Shift);
 }
