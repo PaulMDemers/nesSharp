@@ -275,14 +275,37 @@ public sealed class PpuBus
                 {
                     PatternHigh = FetchBackgroundPatternHigh(backgroundFetchPipeline.PatternAddress)
                 };
-                backgroundShiftRegister = new BackgroundShiftRegister(
-                    true,
-                    backgroundFetchPipeline.RenderAddress,
-                    PatternLow: (ushort)(backgroundFetchPipeline.PatternLow << 8),
-                    PatternHigh: (ushort)(backgroundFetchPipeline.PatternHigh << 8),
-                    backgroundFetchPipeline.AttributePalette);
+                LoadBackgroundShiftRegister();
                 break;
         }
+    }
+
+    private void LoadBackgroundShiftRegister()
+    {
+        if (!backgroundShiftRegister.IsValid)
+        {
+            backgroundShiftRegister = new BackgroundShiftRegister(
+                true,
+                backgroundFetchPipeline.RenderAddress,
+                NextRenderAddress: 0,
+                PatternLow: (ushort)(backgroundFetchPipeline.PatternLow << 8),
+                PatternHigh: (ushort)(backgroundFetchPipeline.PatternHigh << 8),
+                backgroundFetchPipeline.AttributePalette,
+                NextPalette: 0,
+                NextTileShifts: 0,
+                HasNextTile: false);
+            return;
+        }
+
+        backgroundShiftRegister = backgroundShiftRegister with
+        {
+            NextRenderAddress = backgroundFetchPipeline.RenderAddress,
+            PatternLow = (ushort)((backgroundShiftRegister.PatternLow & 0xFF00) | backgroundFetchPipeline.PatternLow),
+            PatternHigh = (ushort)((backgroundShiftRegister.PatternHigh & 0xFF00) | backgroundFetchPipeline.PatternHigh),
+            NextPalette = backgroundFetchPipeline.AttributePalette,
+            NextTileShifts = 0,
+            HasNextTile = true
+        };
     }
 
     private void ShiftBackgroundRegisters()
@@ -295,11 +318,26 @@ public sealed class PpuBus
             return;
         }
 
-        backgroundShiftRegister = backgroundShiftRegister with
+        var shifted = backgroundShiftRegister with
         {
             PatternLow = (ushort)(backgroundShiftRegister.PatternLow << 1),
-            PatternHigh = (ushort)(backgroundShiftRegister.PatternHigh << 1)
+            PatternHigh = (ushort)(backgroundShiftRegister.PatternHigh << 1),
+            NextTileShifts = backgroundShiftRegister.HasNextTile
+                ? backgroundShiftRegister.NextTileShifts + 1
+                : backgroundShiftRegister.NextTileShifts
         };
+
+        backgroundShiftRegister = shifted.HasNextTile && shifted.NextTileShifts >= 8
+            ? shifted with
+            {
+                RenderAddress = shifted.NextRenderAddress,
+                Palette = shifted.NextPalette,
+                NextRenderAddress = 0,
+                NextPalette = 0,
+                NextTileShifts = 0,
+                HasNextTile = false
+            }
+            : shifted;
     }
 
     public bool PollNmi()
@@ -758,14 +796,13 @@ public sealed class PpuBus
 
     private PpuPixel GetBackgroundPixelFromCurrentVramAddress(int x)
     {
-        var tileColumnOffset = (fineX + (x & 0x07)) >> 3;
-        var renderAddress = OffsetBackgroundAddress(currentVramAddress, tileColumnOffset);
-        var key = (ushort)(renderAddress & 0x7FFF);
-        if (backgroundShiftRegister.IsValid && backgroundShiftRegister.RenderAddress == key)
+        if (backgroundShiftRegister.IsValid)
         {
             return GetBackgroundPixelFromShiftRegister();
         }
 
+        var tileColumnOffset = (fineX + (x & 0x07)) >> 3;
+        var renderAddress = OffsetBackgroundAddress(currentVramAddress, tileColumnOffset);
         var latch = GetCurrentBackgroundTileLatch(renderAddress);
         var bit = 7 - ((fineX + (x & 0x07)) & 0x07);
         var color = ((latch.PatternLow >> bit) & 0x01) | (((latch.PatternHigh >> bit) & 0x01) << 1);
@@ -1110,7 +1147,11 @@ public sealed class PpuBus
     private readonly record struct BackgroundShiftRegister(
         bool IsValid,
         ushort RenderAddress,
+        ushort NextRenderAddress,
         ushort PatternLow,
         ushort PatternHigh,
-        byte Palette);
+        byte Palette,
+        byte NextPalette,
+        int NextTileShifts,
+        bool HasNextTile);
 }
