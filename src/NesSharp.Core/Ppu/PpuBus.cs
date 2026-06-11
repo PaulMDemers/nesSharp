@@ -40,6 +40,7 @@ public sealed class PpuBus
     private bool writeToggle;
     private bool renderBackgroundFromCurrentVramAddress;
     private BackgroundTileLatch backgroundTileLatch;
+    private BackgroundFetchPipeline backgroundFetchPipeline;
     private ulong vblankSetTotalDots;
 
     public PpuBus(Cartridge.Cartridge cartridge)
@@ -173,6 +174,7 @@ public sealed class PpuBus
         writeToggle = false;
         renderBackgroundFromCurrentVramAddress = false;
         backgroundTileLatch = default;
+        backgroundFetchPipeline = default;
         vblankSetTotalDots = 0;
     }
 
@@ -222,10 +224,55 @@ public sealed class PpuBus
             }
 
             EvaluateSpriteOverflow();
+            RunBackgroundFetchStep();
             RenderCurrentPixel();
             EvaluateSpriteZeroHit();
             UpdateRenderingVramAddress();
             TickMaskDelay();
+        }
+    }
+
+    private void RunBackgroundFetchStep()
+    {
+        if (!IsRenderingEnabled ||
+            !IsRenderingScanline ||
+            Dot is not (>= 1 and <= 256 or >= 321 and <= 336))
+        {
+            return;
+        }
+
+        switch (Dot & 0x07)
+        {
+            case 1:
+                backgroundFetchPipeline = new BackgroundFetchPipeline(
+                    RenderAddress: currentVramAddress,
+                    TileIndex: FetchBackgroundNametableByte(currentVramAddress),
+                    AttributePalette: 0,
+                    PatternAddress: 0,
+                    PatternLow: 0,
+                    PatternHigh: 0);
+                break;
+            case 3:
+                backgroundFetchPipeline = backgroundFetchPipeline with
+                {
+                    AttributePalette = FetchBackgroundAttributePalette(backgroundFetchPipeline.RenderAddress)
+                };
+                break;
+            case 5:
+                var fineY = (backgroundFetchPipeline.RenderAddress >> 12) & 0x07;
+                var patternAddress = GetBackgroundPatternAddress(backgroundFetchPipeline.TileIndex, fineY);
+                backgroundFetchPipeline = backgroundFetchPipeline with
+                {
+                    PatternAddress = patternAddress,
+                    PatternLow = FetchBackgroundPatternLow(patternAddress)
+                };
+                break;
+            case 7:
+                backgroundFetchPipeline = backgroundFetchPipeline with
+                {
+                    PatternHigh = FetchBackgroundPatternHigh(backgroundFetchPipeline.PatternAddress)
+                };
+                break;
         }
     }
 
@@ -1005,4 +1052,12 @@ public sealed class PpuBus
     }
 
     private readonly record struct BackgroundTileLatch(bool IsValid, ushort RenderAddress, byte PatternLow, byte PatternHigh, byte Palette);
+
+    private readonly record struct BackgroundFetchPipeline(
+        ushort RenderAddress,
+        byte TileIndex,
+        byte AttributePalette,
+        ushort PatternAddress,
+        byte PatternLow,
+        byte PatternHigh);
 }
