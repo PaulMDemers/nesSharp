@@ -220,6 +220,7 @@ public sealed class PpuBus
             EvaluateSpriteOverflow();
             RenderCurrentPixel();
             EvaluateSpriteZeroHit();
+            UpdateRenderingVramAddress();
             TickMaskDelay();
         }
     }
@@ -276,6 +277,8 @@ public sealed class PpuBus
     private bool IsOddFrame => (Frame & 1) != 0;
 
     private int VramIncrement => (registers[0] & 0x04) == 0 ? 1 : 32;
+
+    private bool IsRenderingScanline => Scanline is >= 0 and <= 239 or 261;
 
     private void SetVblank()
     {
@@ -337,6 +340,80 @@ public sealed class PpuBus
         {
             effectiveMask = pendingMask;
         }
+    }
+
+    private void UpdateRenderingVramAddress()
+    {
+        if (!IsRenderingEnabled || !IsRenderingScanline)
+        {
+            return;
+        }
+
+        if ((Dot is >= 1 and <= 256 || Dot is >= 321 and <= 336) && Dot % 8 == 0)
+        {
+            IncrementHorizontalVramAddress();
+        }
+
+        if (Dot == 256)
+        {
+            IncrementVerticalVramAddress();
+        }
+        else if (Dot == 257)
+        {
+            CopyHorizontalVramAddress();
+        }
+        else if (Scanline == 261 && Dot is >= 280 and <= 304)
+        {
+            CopyVerticalVramAddress();
+        }
+    }
+
+    private void IncrementHorizontalVramAddress()
+    {
+        if ((currentVramAddress & 0x001F) == 31)
+        {
+            currentVramAddress = (ushort)((currentVramAddress & 0xFFE0) ^ 0x0400);
+            return;
+        }
+
+        currentVramAddress++;
+    }
+
+    private void IncrementVerticalVramAddress()
+    {
+        if ((currentVramAddress & 0x7000) != 0x7000)
+        {
+            currentVramAddress += 0x1000;
+            return;
+        }
+
+        currentVramAddress = (ushort)(currentVramAddress & 0x8FFF);
+        var coarseY = (currentVramAddress & 0x03E0) >> 5;
+        if (coarseY == 29)
+        {
+            coarseY = 0;
+            currentVramAddress ^= 0x0800;
+        }
+        else if (coarseY == 31)
+        {
+            coarseY = 0;
+        }
+        else
+        {
+            coarseY++;
+        }
+
+        currentVramAddress = (ushort)((currentVramAddress & 0xFC1F) | (coarseY << 5));
+    }
+
+    private void CopyHorizontalVramAddress()
+    {
+        currentVramAddress = (ushort)((currentVramAddress & 0xFBE0) | (temporaryVramAddress & 0x041F));
+    }
+
+    private void CopyVerticalVramAddress()
+    {
+        currentVramAddress = (ushort)((currentVramAddress & 0x841F) | (temporaryVramAddress & 0x7BE0));
     }
 
     private byte ReadOamData()
