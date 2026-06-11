@@ -77,6 +77,23 @@ public sealed class PpuBackgroundRenderingTests
         Assert.Equal(0x22, ppu.Framebuffer[15]);
     }
 
+    [Fact]
+    public void ScheduledBackgroundShifterUsesHighPatternPlane()
+    {
+        var ppu = CreatePpu();
+        WritePatternRow(ppu, tile: 1, row: 0, low: 0x00, high: 0b0100_0000);
+        WritePalette(ppu, 0x3F02, 0x27);
+        WriteNametableTile(ppu, x: 1, y: 0, tile: 1);
+        EnableBackground(ppu);
+        ppu.Clock(8);
+        SetVramAddress(ppu, 0x0001);
+
+        ppu.Clock(8);
+
+        Assert.Equal(0x00, ppu.Framebuffer[14]);
+        Assert.Equal(0x27, ppu.Framebuffer[15]);
+    }
+
     private static PpuBus CreatePpu() => new(CreateCartridge());
 
     private static void EnableBackground(PpuBus ppu)

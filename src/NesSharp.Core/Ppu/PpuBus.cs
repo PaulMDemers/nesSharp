@@ -278,10 +278,9 @@ public sealed class PpuBus
                 backgroundShiftRegister = new BackgroundShiftRegister(
                     true,
                     backgroundFetchPipeline.RenderAddress,
-                    backgroundFetchPipeline.PatternLow,
-                    backgroundFetchPipeline.PatternHigh,
-                    backgroundFetchPipeline.AttributePalette,
-                    Shift: 0);
+                    PatternLow: (ushort)(backgroundFetchPipeline.PatternLow << 8),
+                    PatternHigh: (ushort)(backgroundFetchPipeline.PatternHigh << 8),
+                    backgroundFetchPipeline.AttributePalette);
                 break;
         }
     }
@@ -298,7 +297,8 @@ public sealed class PpuBus
 
         backgroundShiftRegister = backgroundShiftRegister with
         {
-            Shift = backgroundShiftRegister.Shift + 1
+            PatternLow = (ushort)(backgroundShiftRegister.PatternLow << 1),
+            PatternHigh = (ushort)(backgroundShiftRegister.PatternHigh << 1)
         };
     }
 
@@ -779,7 +779,7 @@ public sealed class PpuBus
 
     private PpuPixel GetBackgroundPixelFromShiftRegister()
     {
-        var bit = 7 - ((fineX + backgroundShiftRegister.Shift) & 0x07);
+        var bit = 15 - fineX;
         var color = ((backgroundShiftRegister.PatternLow >> bit) & 0x01) |
             (((backgroundShiftRegister.PatternHigh >> bit) & 0x01) << 1);
         if (color == 0)
@@ -1110,8 +1110,7 @@ public sealed class PpuBus
     private readonly record struct BackgroundShiftRegister(
         bool IsValid,
         ushort RenderAddress,
-        byte PatternLow,
-        byte PatternHigh,
-        byte Palette,
-        int Shift);
+        ushort PatternLow,
+        ushort PatternHigh,
+        byte Palette);
 }
