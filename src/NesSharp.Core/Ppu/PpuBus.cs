@@ -39,7 +39,6 @@ public sealed class PpuBus
     private ushort temporaryVramAddress;
     private bool writeToggle;
     private bool renderBackgroundFromCurrentVramAddress;
-    private BackgroundTileLatch backgroundTileLatch;
     private BackgroundFetchPipeline backgroundFetchPipeline;
     private BackgroundShiftRegister backgroundShiftRegister;
     private ulong vblankSetTotalDots;
@@ -174,7 +173,6 @@ public sealed class PpuBus
         temporaryVramAddress = 0;
         writeToggle = false;
         renderBackgroundFromCurrentVramAddress = false;
-        backgroundTileLatch = default;
         backgroundFetchPipeline = default;
         backgroundShiftRegister = default;
         vblankSetTotalDots = 0;
@@ -595,9 +593,38 @@ public sealed class PpuBus
         temporaryVramAddress = (ushort)((temporaryVramAddress & 0x7F00) | value);
         currentVramAddress = temporaryVramAddress;
         renderBackgroundFromCurrentVramAddress = currentVramAddress < 0x2000;
-        backgroundTileLatch = default;
         backgroundShiftRegister = default;
+        if (renderBackgroundFromCurrentVramAddress && ShouldPrimeBackgroundShiftRegister())
+        {
+            PrimeBackgroundShiftRegister(currentVramAddress);
+        }
+
         writeToggle = false;
+    }
+
+    private bool ShouldPrimeBackgroundShiftRegister()
+    {
+        return !IsRenderingEnabled ||
+            !IsRenderingScanline ||
+            Dot < 7;
+    }
+
+    private void PrimeBackgroundShiftRegister(ushort renderAddress)
+    {
+        var key = (ushort)(renderAddress & 0x7FFF);
+        var tileIndex = FetchBackgroundNametableByte(key);
+        var fineY = (key >> 12) & 0x07;
+        var patternAddress = GetBackgroundPatternAddress(tileIndex, fineY);
+        backgroundShiftRegister = new BackgroundShiftRegister(
+            true,
+            key,
+            NextRenderAddress: 0,
+            PatternLow: (ushort)(FetchBackgroundPatternLow(patternAddress) << 8),
+            PatternHigh: (ushort)(FetchBackgroundPatternHigh(patternAddress) << 8),
+            FetchBackgroundAttributePalette(key),
+            NextPalette: 0,
+            NextTileShifts: 0,
+            HasNextTile: false);
     }
 
     private void IncrementVramAddress()
@@ -801,17 +828,7 @@ public sealed class PpuBus
             return GetBackgroundPixelFromShiftRegister();
         }
 
-        var tileColumnOffset = (fineX + (x & 0x07)) >> 3;
-        var renderAddress = OffsetBackgroundAddress(currentVramAddress, tileColumnOffset);
-        var latch = GetCurrentBackgroundTileLatch(renderAddress);
-        var bit = 7 - ((fineX + (x & 0x07)) & 0x07);
-        var color = ((latch.PatternLow >> bit) & 0x01) | (((latch.PatternHigh >> bit) & 0x01) << 1);
-        if (color == 0)
-        {
-            return PpuPixel.Transparent;
-        }
-
-        return new PpuPixel(color, (ushort)(0x3F00 + latch.Palette * 4 + color), false);
+        return PpuPixel.Transparent;
     }
 
     private PpuPixel GetBackgroundPixelFromShiftRegister()
@@ -825,26 +842,6 @@ public sealed class PpuBus
         }
 
         return new PpuPixel(color, (ushort)(0x3F00 + backgroundShiftRegister.Palette * 4 + color), false);
-    }
-
-    private BackgroundTileLatch GetCurrentBackgroundTileLatch(ushort renderAddress)
-    {
-        var key = (ushort)(renderAddress & 0x7FFF);
-        if (backgroundTileLatch.IsValid && backgroundTileLatch.RenderAddress == key)
-        {
-            return backgroundTileLatch;
-        }
-
-        var tileIndex = FetchBackgroundNametableByte(key);
-        var fineY = (key >> 12) & 0x07;
-        var patternAddress = GetBackgroundPatternAddress(tileIndex, fineY);
-        backgroundTileLatch = new BackgroundTileLatch(
-            true,
-            key,
-            FetchBackgroundPatternLow(patternAddress),
-            FetchBackgroundPatternHigh(patternAddress),
-            FetchBackgroundAttributePalette(key));
-        return backgroundTileLatch;
     }
 
     private byte FetchBackgroundNametableByte(ushort renderAddress)
@@ -1133,8 +1130,6 @@ public sealed class PpuBus
     {
         public static readonly PpuPixel Transparent = new(0, 0x3F00, false);
     }
-
-    private readonly record struct BackgroundTileLatch(bool IsValid, ushort RenderAddress, byte PatternLow, byte PatternHigh, byte Palette);
 
     private readonly record struct BackgroundFetchPipeline(
         ushort RenderAddress,
