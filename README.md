@@ -36,6 +36,7 @@ Battery-backed saves are loaded from and written to a `.sav` file beside the ROM
 - Runs sprite hit/overflow test ROMs that report final results through `$00F8`.
 - Passes all 16 NROM `instr_test-v5/rom_singles` CPU instruction ROMs.
 - Passes `instr_timing/rom_singles` instruction and branch timing ROMs.
+- Passes `branch_timing_tests` branch edge-case timing ROMs.
 - Tracks basic NTSC PPU dot/scanline/frame timing.
 - Implements PPU vblank set/clear behavior, `$2002` read side effects, basic NMI control, and odd-frame clock skip.
 - Advances PPU timing during CPU bus accesses, with raw bus reads preserved for tracing/debug inspection.

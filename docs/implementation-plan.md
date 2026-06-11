@@ -75,7 +75,7 @@ First tests:
 - `test-roms/nes-test-roms/blargg_nes_cpu_test5/official.nes`
 - `test-roms/nes-test-roms/instr_test-v5/official_only.nes`
 - `test-roms/nes-test-roms/instr_timing/rom_singles/*.nes`
-- `test-roms/nes-test-roms/branch_timing_tests/*.nes`
+- `test-roms/nes-test-roms/branch_timing_tests/*.nes` pass through the `$00F8` result runner.
 
 Deliverable: official CPU instructions pass trace comparison and memory-reported CPU tests.
 
