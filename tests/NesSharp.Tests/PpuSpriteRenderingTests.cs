@@ -48,6 +48,7 @@ public sealed class PpuSpriteRenderingTests
         WritePalette(ppu, 0x3F12, 0x26);
         WriteNametableTile(ppu, x: 1, y: 1, tile: 0);
         WriteSprite(ppu, index: 0, y: 8, tile: 1, attributes: 0x20, x: 8);
+        SetVramAddress(ppu, 0x0000);
         EnableBackgroundAndSprites(ppu);
 
         ClockThroughPixel(ppu, x: 8, y: 8);
@@ -185,17 +186,21 @@ public sealed class PpuSpriteRenderingTests
 
     private static void WritePalette(PpuBus ppu, ushort address, byte value)
     {
-        ppu.WriteRegister(0x2006, (byte)(address >> 8));
-        ppu.WriteRegister(0x2006, (byte)address);
+        SetVramAddress(ppu, address);
         ppu.WriteRegister(0x2007, value);
     }
 
     private static void WriteNametableTile(PpuBus ppu, int x, int y, byte tile)
     {
         var address = (ushort)(0x2000 + y * 32 + x);
+        SetVramAddress(ppu, address);
+        ppu.WriteRegister(0x2007, tile);
+    }
+
+    private static void SetVramAddress(PpuBus ppu, ushort address)
+    {
         ppu.WriteRegister(0x2006, (byte)(address >> 8));
         ppu.WriteRegister(0x2006, (byte)address);
-        ppu.WriteRegister(0x2007, tile);
     }
 
     private static Cartridge CreateCartridge()
