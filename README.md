@@ -63,6 +63,7 @@ Battery-backed saves are loaded from and written to a `.sav` file beside the ROM
 - Runs desktop emulation on a background frame loop with UI-thread framebuffer presentation.
 - Includes a desktop power-cycle command that rebuilds mapper/machine state while preserving battery-backed save data.
 - Passes `ppu_vbl_nmi` ROMs `01-vbl_basics` through `09-even_odd_frames`.
+- Passes all `vbl_nmi_timing` ROMs through the `$00F8` result runner.
 - Passes `ppu_open_bus`, `ppu_read_buffer`, `oam_read`, and `oam_stress`.
 - Includes focused xUnit coverage using synthetic ROMs and the downloaded `nestest.nes`.
 

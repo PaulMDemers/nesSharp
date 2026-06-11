@@ -125,7 +125,7 @@ First tests:
 - `blargg_ppu_tests_2005.09.15b/*.nes`
 - `ppu_read_buffer`
 - `ppu_vbl_nmi`: singles `01` through `09` pass; `10-even_odd_timing` remains.
-- `vbl_nmi_timing`
+- `vbl_nmi_timing`: all ROMs pass through the `$00F8` result runner.
 - `sprite_hit_tests_2005.10.05`: all ROMs pass through the `$00F8` result runner.
 - `sprite_overflow_tests`: all ROMs pass through the `$00F8` result runner.
 
