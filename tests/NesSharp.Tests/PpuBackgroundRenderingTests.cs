@@ -114,6 +114,25 @@ public sealed class PpuBackgroundRenderingTests
     }
 
     [Fact]
+    public void ScheduledBackgroundAttributeShifterLoadsNextPaletteIntoLowByte()
+    {
+        var ppu = CreatePpu();
+        WritePatternRow(ppu, tile: 1, row: 0, low: 0x00, high: 0x00);
+        WritePatternRow(ppu, tile: 2, row: 0, low: 0x80, high: 0x00);
+        WritePalette(ppu, 0x3F05, 0x25);
+        WriteNametableTile(ppu, x: 1, y: 0, tile: 1);
+        WriteNametableTile(ppu, x: 2, y: 0, tile: 2);
+        WriteAttributeByte(ppu, 0x23C0, 0b0000_0100);
+        EnableBackground(ppu);
+        ppu.Clock(8);
+        SetVramAddress(ppu, 0x0001);
+
+        ppu.Clock(23);
+
+        Assert.Equal(0x25, ppu.Framebuffer[30]);
+    }
+
+    [Fact]
     public void ScrollBackgroundUsesScheduledShifterAfterFetch()
     {
         var ppu = CreatePpu();
@@ -164,6 +183,12 @@ public sealed class PpuBackgroundRenderingTests
     {
         SetVramAddress(ppu, (ushort)(0x2000 + y * 32 + x));
         ppu.WriteRegister(0x2007, tile);
+    }
+
+    private static void WriteAttributeByte(PpuBus ppu, ushort address, byte value)
+    {
+        SetVramAddress(ppu, address);
+        ppu.WriteRegister(0x2007, value);
     }
 
     private static Cartridge CreateCartridge()

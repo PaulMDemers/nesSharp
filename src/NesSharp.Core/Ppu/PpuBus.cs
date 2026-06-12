@@ -304,8 +304,8 @@ public sealed class PpuBus
                 NextRenderAddress: 0,
                 PatternLow: (ushort)(backgroundFetchPipeline.PatternLow << 8),
                 PatternHigh: (ushort)(backgroundFetchPipeline.PatternHigh << 8),
-                backgroundFetchPipeline.AttributePalette,
-                NextPalette: 0,
+                AttributeLow: GetAttributeShiftPlane(backgroundFetchPipeline.AttributePalette, 0, highByte: true),
+                AttributeHigh: GetAttributeShiftPlane(backgroundFetchPipeline.AttributePalette, 1, highByte: true),
                 NextTileShifts: 0,
                 HasNextTile: false);
             return;
@@ -316,10 +316,23 @@ public sealed class PpuBus
             NextRenderAddress = backgroundFetchPipeline.RenderAddress,
             PatternLow = (ushort)((backgroundShiftRegister.PatternLow & 0xFF00) | backgroundFetchPipeline.PatternLow),
             PatternHigh = (ushort)((backgroundShiftRegister.PatternHigh & 0xFF00) | backgroundFetchPipeline.PatternHigh),
-            NextPalette = backgroundFetchPipeline.AttributePalette,
+            AttributeLow = (ushort)((backgroundShiftRegister.AttributeLow & 0xFF00) |
+                GetAttributeShiftPlane(backgroundFetchPipeline.AttributePalette, 0, highByte: false)),
+            AttributeHigh = (ushort)((backgroundShiftRegister.AttributeHigh & 0xFF00) |
+                GetAttributeShiftPlane(backgroundFetchPipeline.AttributePalette, 1, highByte: false)),
             NextTileShifts = 0,
             HasNextTile = true
         };
+    }
+
+    private static ushort GetAttributeShiftPlane(byte palette, int bit, bool highByte)
+    {
+        if (((palette >> bit) & 0x01) == 0)
+        {
+            return 0;
+        }
+
+        return highByte ? (ushort)0xFF00 : (ushort)0x00FF;
     }
 
     private void ShiftBackgroundRegisters()
@@ -335,6 +348,8 @@ public sealed class PpuBus
         {
             PatternLow = (ushort)(backgroundShiftRegister.PatternLow << 1),
             PatternHigh = (ushort)(backgroundShiftRegister.PatternHigh << 1),
+            AttributeLow = (ushort)(backgroundShiftRegister.AttributeLow << 1),
+            AttributeHigh = (ushort)(backgroundShiftRegister.AttributeHigh << 1),
             NextTileShifts = backgroundShiftRegister.HasNextTile
                 ? backgroundShiftRegister.NextTileShifts + 1
                 : backgroundShiftRegister.NextTileShifts
@@ -344,9 +359,7 @@ public sealed class PpuBus
             ? shifted with
             {
                 RenderAddress = shifted.NextRenderAddress,
-                Palette = shifted.NextPalette,
                 NextRenderAddress = 0,
-                NextPalette = 0,
                 NextTileShifts = 0,
                 HasNextTile = false
             }
@@ -632,14 +645,15 @@ public sealed class PpuBus
         var tileIndex = FetchBackgroundNametableByte(key);
         var fineY = (key >> 12) & 0x07;
         var patternAddress = GetBackgroundPatternAddress(tileIndex, fineY);
+        var attributePalette = FetchBackgroundAttributePalette(key);
         backgroundShiftRegister = new BackgroundShiftRegister(
             true,
             key,
             NextRenderAddress: 0,
             PatternLow: (ushort)(FetchBackgroundPatternLow(patternAddress) << 8),
             PatternHigh: (ushort)(FetchBackgroundPatternHigh(patternAddress) << 8),
-            FetchBackgroundAttributePalette(key),
-            NextPalette: 0,
+            AttributeLow: GetAttributeShiftPlane(attributePalette, 0, highByte: true),
+            AttributeHigh: GetAttributeShiftPlane(attributePalette, 1, highByte: true),
             NextTileShifts: 0,
             HasNextTile: false);
     }
@@ -855,7 +869,9 @@ public sealed class PpuBus
             return PpuPixel.Transparent;
         }
 
-        return new PpuPixel(color, (ushort)(0x3F00 + backgroundShiftRegister.Palette * 4 + color), false);
+        var palette = ((backgroundShiftRegister.AttributeLow >> bit) & 0x01) |
+            (((backgroundShiftRegister.AttributeHigh >> bit) & 0x01) << 1);
+        return new PpuPixel(color, (ushort)(0x3F00 + palette * 4 + color), false);
     }
 
     private byte FetchBackgroundNametableByte(ushort renderAddress)
@@ -1160,8 +1176,8 @@ public sealed class PpuBus
         ushort NextRenderAddress,
         ushort PatternLow,
         ushort PatternHigh,
-        byte Palette,
-        byte NextPalette,
+        ushort AttributeLow,
+        ushort AttributeHigh,
         int NextTileShifts,
         bool HasNextTile);
 }
