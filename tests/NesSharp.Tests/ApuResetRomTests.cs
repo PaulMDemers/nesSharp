@@ -10,6 +10,7 @@ public sealed class ApuResetRomTests
         "4015_cleared.nes",
         "4017_timing.nes",
         "irq_flag_cleared.nes",
+        "len_ctrs_enabled.nes",
         "works_immediately.nes"
     };
 

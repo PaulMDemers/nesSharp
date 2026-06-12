@@ -77,6 +77,17 @@ public sealed class ApuBus
         samples.Clear();
     }
 
+    public void SoftReset()
+    {
+        WriteStatus(0);
+        frameInterrupt = false;
+        frameCycle = 0;
+        cpuCycle = 0;
+        sampleAccumulator = 0;
+        samples.Clear();
+        WriteFrameCounter(frameCounterControl);
+    }
+
     public void Clock()
     {
         cpuCycle++;

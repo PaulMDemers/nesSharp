@@ -42,6 +42,12 @@ public sealed class NesMachine
         Cpu.Reset();
     }
 
+    public void SoftReset()
+    {
+        CpuBus.ApuBus.SoftReset();
+        Cpu.Reset();
+    }
+
     public int StepInstruction()
     {
         var cpuCycles = Cpu.Step();

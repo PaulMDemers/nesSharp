@@ -5,6 +5,7 @@ namespace NesSharp.Core.Testing;
 
 public static class BlarggTestRunner
 {
+    private const byte JmpAbsoluteOpcode = 0x4C;
     private const byte RunningStatus = 0x80;
     private const byte ResetRequestedStatus = 0x81;
     private const int MaxResetRequests = 8;
@@ -42,6 +43,12 @@ public static class BlarggTestRunner
 
                 if (status == ResetRequestedStatus)
                 {
+                    if (!IsAtSelfJumpLoop(machine))
+                    {
+                        machine.StepInstruction();
+                        continue;
+                    }
+
                     if (resetRequests >= MaxResetRequests)
                     {
                         return new BlarggTestResult(
@@ -53,7 +60,7 @@ public static class BlarggTestRunner
                     }
 
                     resetRequests++;
-                    machine.Reset();
+                    machine.SoftReset();
                     machine.CpuBus.WriteRaw(StatusAddress, RunningStatus);
                     continue;
                 }
@@ -87,6 +94,13 @@ public static class BlarggTestRunner
         return machine.CpuBus.Read(SignatureAddress) == 0xDE &&
             machine.CpuBus.Read(SignatureAddress + 1) == 0xB0 &&
             machine.CpuBus.Read(SignatureAddress + 2) == 0x61;
+    }
+
+    private static bool IsAtSelfJumpLoop(NesMachine machine)
+    {
+        var pc = machine.Cpu.ProgramCounter;
+        return machine.CpuBus.ReadRaw(pc) == JmpAbsoluteOpcode &&
+            machine.CpuBus.ReadWordRaw((ushort)(pc + 1)) == pc;
     }
 
     private static string ReadOutput(NesMachine machine)
