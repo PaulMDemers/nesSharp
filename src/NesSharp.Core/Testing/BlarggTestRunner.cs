@@ -7,6 +7,7 @@ public static class BlarggTestRunner
 {
     private const byte RunningStatus = 0x80;
     private const byte ResetRequestedStatus = 0x81;
+    private const int MaxResetRequests = 8;
     private const ushort StatusAddress = 0x6000;
     private const ushort SignatureAddress = 0x6001;
     private const ushort TextAddress = 0x6004;
@@ -22,6 +23,7 @@ public static class BlarggTestRunner
         }
 
         machine.Reset();
+        var resetRequests = 0;
 
         for (long instructions = 0; instructions < maxInstructions; instructions++)
         {
@@ -40,12 +42,20 @@ public static class BlarggTestRunner
 
                 if (status == ResetRequestedStatus)
                 {
-                    return new BlarggTestResult(
-                        BlarggTestStatus.ResetRequested,
-                        status,
-                        ReadOutput(machine),
-                        instructions,
-                        machine.Cpu.Cycles);
+                    if (resetRequests >= MaxResetRequests)
+                    {
+                        return new BlarggTestResult(
+                            BlarggTestStatus.ResetRequested,
+                            status,
+                            ReadOutput(machine),
+                            instructions,
+                            machine.Cpu.Cycles);
+                    }
+
+                    resetRequests++;
+                    machine.Reset();
+                    machine.CpuBus.WriteRaw(StatusAddress, RunningStatus);
+                    continue;
                 }
             }
 
@@ -98,4 +108,3 @@ public static class BlarggTestRunner
         return builder.ToString();
     }
 }
-
