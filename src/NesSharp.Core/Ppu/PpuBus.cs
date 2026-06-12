@@ -246,6 +246,7 @@ public sealed class PpuBus
         {
             case 1:
                 backgroundFetchPipeline = new BackgroundFetchPipeline(
+                    IsValid: true,
                     RenderAddress: currentVramAddress,
                     TileIndex: FetchBackgroundNametableByte(currentVramAddress),
                     AttributePalette: 0,
@@ -254,12 +255,22 @@ public sealed class PpuBus
                     PatternHigh: 0);
                 break;
             case 3:
+                if (!backgroundFetchPipeline.IsValid)
+                {
+                    break;
+                }
+
                 backgroundFetchPipeline = backgroundFetchPipeline with
                 {
                     AttributePalette = FetchBackgroundAttributePalette(backgroundFetchPipeline.RenderAddress)
                 };
                 break;
             case 5:
+                if (!backgroundFetchPipeline.IsValid)
+                {
+                    break;
+                }
+
                 var fineY = (backgroundFetchPipeline.RenderAddress >> 12) & 0x07;
                 var patternAddress = GetBackgroundPatternAddress(backgroundFetchPipeline.TileIndex, fineY);
                 backgroundFetchPipeline = backgroundFetchPipeline with
@@ -269,6 +280,11 @@ public sealed class PpuBus
                 };
                 break;
             case 7:
+                if (!backgroundFetchPipeline.IsValid)
+                {
+                    break;
+                }
+
                 backgroundFetchPipeline = backgroundFetchPipeline with
                 {
                     PatternHigh = FetchBackgroundPatternHigh(backgroundFetchPipeline.PatternAddress)
@@ -308,8 +324,7 @@ public sealed class PpuBus
 
     private void ShiftBackgroundRegisters()
     {
-        if (!renderBackgroundFromCurrentVramAddress ||
-            !backgroundShiftRegister.IsValid ||
+        if (!backgroundShiftRegister.IsValid ||
             Scanline is < 0 or >= ScreenHeight ||
             Dot is < 1 or > ScreenWidth)
         {
@@ -571,6 +586,7 @@ public sealed class PpuBus
             scrollX = value;
             temporaryVramAddress = (ushort)((temporaryVramAddress & 0x7FE0) | (value >> 3));
             renderBackgroundFromCurrentVramAddress = false;
+            backgroundShiftRegister = default;
             writeToggle = true;
             return;
         }
@@ -578,6 +594,7 @@ public sealed class PpuBus
         scrollY = value;
         temporaryVramAddress = (ushort)((temporaryVramAddress & 0x0C1F) | ((value & 0x07) << 12) | ((value & 0xF8) << 2));
         renderBackgroundFromCurrentVramAddress = false;
+        backgroundShiftRegister = default;
         writeToggle = false;
     }
 
@@ -816,19 +833,16 @@ public sealed class PpuBus
             return PpuPixel.Transparent;
         }
 
-        return renderBackgroundFromCurrentVramAddress
-            ? GetBackgroundPixelFromCurrentVramAddress(x)
-            : GetBackgroundPixelFromScrollCoordinates(x, y);
-    }
-
-    private PpuPixel GetBackgroundPixelFromCurrentVramAddress(int x)
-    {
-        if (backgroundShiftRegister.IsValid)
+        if (backgroundShiftRegister.IsValid &&
+            (renderBackgroundFromCurrentVramAddress ||
+                backgroundShiftRegister.RenderAddress == (currentVramAddress & 0x7FFF)))
         {
             return GetBackgroundPixelFromShiftRegister();
         }
 
-        return PpuPixel.Transparent;
+        return renderBackgroundFromCurrentVramAddress
+            ? PpuPixel.Transparent
+            : GetBackgroundPixelFromScrollCoordinates(x, y);
     }
 
     private PpuPixel GetBackgroundPixelFromShiftRegister()
@@ -1132,6 +1146,7 @@ public sealed class PpuBus
     }
 
     private readonly record struct BackgroundFetchPipeline(
+        bool IsValid,
         ushort RenderAddress,
         byte TileIndex,
         byte AttributePalette,

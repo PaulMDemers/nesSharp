@@ -113,6 +113,27 @@ public sealed class PpuBackgroundRenderingTests
         Assert.Equal(0x22, ppu.Framebuffer[30]);
     }
 
+    [Fact]
+    public void ScrollBackgroundUsesScheduledShifterAfterFetch()
+    {
+        var ppu = CreatePpu();
+        WritePatternRow(ppu, tile: 1, row: 0, low: 0xFF, high: 0x00);
+        WritePalette(ppu, 0x3F01, 0x22);
+        WriteNametableTile(ppu, x: 0, y: 0, tile: 1);
+        WriteNametableTile(ppu, x: 1, y: 0, tile: 1);
+        SetVramAddress(ppu, 0x0000);
+        ppu.WriteRegister(0x2005, 0x00);
+        ppu.WriteRegister(0x2005, 0x00);
+        EnableBackground(ppu);
+        ppu.Clock(8);
+
+        ppu.Clock(7);
+        WritePatternRow(ppu, tile: 1, row: 0, low: 0x00, high: 0x00);
+        ppu.Clock(1);
+
+        Assert.Equal(0x22, ppu.Framebuffer[15]);
+    }
+
     private static PpuBus CreatePpu() => new(CreateCartridge());
 
     private static void EnableBackground(PpuBus ppu)
