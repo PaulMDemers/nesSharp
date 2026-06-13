@@ -25,6 +25,19 @@ public sealed class CpuTimingRomTests
             $"{romName} failed with status {result.Status}, code {result.ResultCode:X2}, after {result.InstructionsExecuted} instructions.{Environment.NewLine}{result.Output}");
     }
 
+    [Fact]
+    public void AggregateInstrTimingRomPasses()
+    {
+        var root = FindWorkspaceRoot(AppContext.BaseDirectory);
+        var romPath = Path.Combine(root, "test-roms", "nes-test-roms", "instr_timing", "instr_timing.nes");
+
+        var result = BlarggTestRunner.Run(NesMachine.LoadFile(romPath), 100_000_000);
+
+        Assert.True(
+            result.Passed,
+            $"instr_timing.nes failed with status {result.Status}, code {result.ResultCode:X2}, after {result.InstructionsExecuted} instructions.{Environment.NewLine}{result.Output}");
+    }
+
     private static string FindWorkspaceRoot(string start)
     {
         var directory = new DirectoryInfo(start);
@@ -41,4 +54,3 @@ public sealed class CpuTimingRomTests
         throw new DirectoryNotFoundException("Could not find workspace root containing instr_timing/rom_singles.");
     }
 }
-
