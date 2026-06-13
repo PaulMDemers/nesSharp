@@ -13,6 +13,7 @@ public sealed class CpuBus
     private bool trackCpuAccessCycles;
     private int instructionAccessCycles;
     private bool nextDmaCycleIsGet = true;
+    private byte openBus;
 
     public CpuBus(Cartridge.Cartridge cartridge)
         : this(cartridge, new PpuBus(cartridge))
@@ -58,6 +59,7 @@ public sealed class CpuBus
     {
         ClockCpuAccess();
         var value = ReadRaw(address);
+        SetOpenBus(value);
         RunPendingDmcDma(address);
         return value;
     }
@@ -71,14 +73,16 @@ public sealed class CpuBus
             0x4015 => ApuBus.ReadStatus(),
             0x4016 => Controller1.Read(),
             0x4017 => Controller2.Read(),
-            >= 0x4000 and <= 0x401F => 0,
-            >= 0x4020 => Cartridge.CpuRead(address)
+            >= 0x4000 and <= 0x401F => openBus,
+            >= 0x4020 and <= 0x5FFF => openBus,
+            >= 0x6000 => Cartridge.CpuRead(address)
         };
     }
 
     public void Write(ushort address, byte value)
     {
         ClockCpuAccess();
+        SetOpenBus(value);
         WriteRaw(address, value);
     }
 
@@ -140,6 +144,14 @@ public sealed class CpuBus
         CpuAccessCycles++;
         cpuCycleElapsed?.Invoke();
         nextDmaCycleIsGet = !nextDmaCycleIsGet;
+    }
+
+    private void SetOpenBus(byte value)
+    {
+        if (trackCpuAccessCycles)
+        {
+            openBus = value;
+        }
     }
 
     private void RunPendingDmcDma(ushort? haltedReadAddress = null)

@@ -5,17 +5,24 @@ namespace NesSharp.Tests;
 
 public sealed class CpuExecSpaceRomTests
 {
-    [Fact]
-    public void PpuIoExecSpaceRomPasses()
+    public static TheoryData<string> PassingCpuExecSpaceRoms => new()
+    {
+        "test_cpu_exec_space_apu.nes",
+        "test_cpu_exec_space_ppuio.nes"
+    };
+
+    [Theory]
+    [MemberData(nameof(PassingCpuExecSpaceRoms))]
+    public void CpuExecSpaceRomsPass(string romName)
     {
         var root = FindWorkspaceRoot(AppContext.BaseDirectory);
-        var romPath = Path.Combine(root, "test-roms", "nes-test-roms", "cpu_exec_space", "test_cpu_exec_space_ppuio.nes");
+        var romPath = Path.Combine(root, "test-roms", "nes-test-roms", "cpu_exec_space", romName);
 
         var result = BlarggTestRunner.Run(NesMachine.LoadFile(romPath), 100_000_000);
 
         Assert.True(
             result.Passed,
-            $"test_cpu_exec_space_ppuio.nes failed with status {result.Status}, code {result.ResultCode:X2}, after {result.InstructionsExecuted} instructions.{Environment.NewLine}{result.Output}");
+            $"{romName} failed with status {result.Status}, code {result.ResultCode:X2}, after {result.InstructionsExecuted} instructions.{Environment.NewLine}{result.Output}");
     }
 
     private static string FindWorkspaceRoot(string start)
