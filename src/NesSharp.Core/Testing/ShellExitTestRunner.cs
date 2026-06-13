@@ -4,7 +4,10 @@ namespace NesSharp.Core.Testing;
 
 public static class ShellExitTestRunner
 {
-    public static ShellExitTestResult Run(NesMachine machine, long maxInstructions)
+    public static ShellExitTestResult Run(
+        NesMachine machine,
+        long maxInstructions,
+        Action<NesMachine, long>? beforeInstruction = null)
     {
         ArgumentNullException.ThrowIfNull(machine);
 
@@ -25,6 +28,8 @@ public static class ShellExitTestRunner
                     instructions,
                     machine.Cpu.Cycles);
             }
+
+            beforeInstruction?.Invoke(machine, instructions);
 
             try
             {
