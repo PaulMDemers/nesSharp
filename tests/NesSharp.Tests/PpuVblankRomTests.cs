@@ -33,6 +33,19 @@ public sealed class PpuVblankRomTests
             $"{romName} failed with status {result.Status}, code {result.ResultCode:X2}, after {result.InstructionsExecuted} instructions.{Environment.NewLine}{result.Output}");
     }
 
+    [Fact]
+    public void AggregatePpuVblankNmiRomPasses()
+    {
+        var root = FindWorkspaceRoot(AppContext.BaseDirectory);
+        var romPath = Path.Combine(root, "test-roms", "nes-test-roms", "ppu_vbl_nmi", "ppu_vbl_nmi.nes");
+
+        var result = BlarggTestRunner.Run(NesMachine.LoadFile(romPath), 100_000_000);
+
+        Assert.True(
+            result.Passed,
+            $"ppu_vbl_nmi.nes failed with status {result.Status}, code {result.ResultCode:X2}, after {result.InstructionsExecuted} instructions.{Environment.NewLine}{result.Output}");
+    }
+
     private static string FindWorkspaceRoot(string start)
     {
         var directory = new DirectoryInfo(start);
