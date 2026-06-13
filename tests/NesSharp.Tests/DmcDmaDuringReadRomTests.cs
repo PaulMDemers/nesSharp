@@ -9,6 +9,7 @@ public sealed class DmcDmaDuringReadRomTests
     {
         "dma_2007_read.nes",
         "dma_2007_write.nes",
+        "dma_4016_read.nes",
         "double_2007_read.nes",
         "read_write_2007.nes"
     };

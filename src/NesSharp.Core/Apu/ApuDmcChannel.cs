@@ -223,7 +223,7 @@ public sealed class ApuDmcChannel
 
         pendingSampleAddress = CurrentAddress;
         sampleFetchPending = true;
-        sampleFetchDelayCycles = 2;
+        sampleFetchDelayCycles = 1;
     }
 
     private void CompleteSampleByteRead()
