@@ -13,6 +13,8 @@ public sealed class ApuBus
     private const byte FrameInterruptStatus = 0x40;
     private const byte DmcInterruptStatus = 0x80;
     private const int FourStepFrameCycles = 29_829;
+    // A CPU reset replays the five-step frame counter write just before reset-vector execution.
+    private const int SoftResetFrameCounterPhase = 4;
 
     private static readonly byte[] LengthCounterTable =
     [
@@ -86,6 +88,10 @@ public sealed class ApuBus
         sampleAccumulator = 0;
         samples.Clear();
         WriteFrameCounter(frameCounterControl);
+        if (IsFiveStepMode)
+        {
+            frameCycle = SoftResetFrameCounterPhase;
+        }
     }
 
     public void Clock()
