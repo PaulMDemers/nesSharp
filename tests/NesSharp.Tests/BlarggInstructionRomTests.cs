@@ -24,6 +24,21 @@ public sealed class BlarggInstructionRomTests
         }
     }
 
+    [Theory]
+    [InlineData("official_only.nes")]
+    [InlineData("all_instrs.nes")]
+    public void InstrTestV5AggregateRomsPass(string romName)
+    {
+        var root = FindWorkspaceRoot(AppContext.BaseDirectory);
+        var romPath = Path.Combine(root, "test-roms", "nes-test-roms", "instr_test-v5", romName);
+
+        var result = BlarggTestRunner.Run(NesMachine.LoadFile(romPath), 100_000_000);
+
+        Assert.True(
+            result.Passed,
+            $"{romName} failed with status {result.Status}, code {result.ResultCode:X2}, after {result.InstructionsExecuted} instructions.{Environment.NewLine}{result.Output}");
+    }
+
     private static string FindWorkspaceRoot(string start)
     {
         var directory = new DirectoryInfo(start);
@@ -40,4 +55,3 @@ public sealed class BlarggInstructionRomTests
         throw new DirectoryNotFoundException("Could not find workspace root containing instr_test-v5/rom_singles.");
     }
 }
-
