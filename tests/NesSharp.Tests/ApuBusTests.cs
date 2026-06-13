@@ -599,6 +599,49 @@ public sealed class ApuBusTests
     }
 
     [Fact]
+    public void DelayedFourStepIrqRepeatsWhenReadOnWrapCycle()
+    {
+        var apu = new ApuBus();
+        apu.WriteRegister(0x4017, 0x00);
+
+        for (var i = 0; i < 29_832; i++)
+        {
+            apu.Clock();
+        }
+
+        Assert.Equal(0x40, apu.ReadStatus() & 0x40);
+
+        for (var i = 0; i < 4; i++)
+        {
+            apu.Clock();
+        }
+
+        Assert.Equal(0x40, apu.ReadStatus() & 0x40);
+        Assert.Equal(0x00, apu.ReadStatus() & 0x40);
+    }
+
+    [Fact]
+    public void DelayedFourStepIrqClearsNormallyAfterWrapCycle()
+    {
+        var apu = new ApuBus();
+        apu.WriteRegister(0x4017, 0x00);
+
+        for (var i = 0; i < 29_833; i++)
+        {
+            apu.Clock();
+        }
+
+        Assert.Equal(0x40, apu.ReadStatus() & 0x40);
+
+        for (var i = 0; i < 4; i++)
+        {
+            apu.Clock();
+        }
+
+        Assert.Equal(0x00, apu.ReadStatus() & 0x40);
+    }
+
+    [Fact]
     public void FrameCounterIrqInhibitClearsFrameInterruptStatus()
     {
         var apu = new ApuBus();

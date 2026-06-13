@@ -38,6 +38,7 @@ public sealed class ApuBus
     private ulong cpuCycle;
     private double sampleAccumulator;
     private bool frameInterrupt;
+    private bool repeatFrameInterruptAfterWrapRead;
     private bool useDelayedFrameTimings;
     private readonly List<float> samples = [];
 
@@ -85,6 +86,7 @@ public sealed class ApuBus
         cpuCycle = 0;
         sampleAccumulator = 0;
         frameInterrupt = false;
+        repeatFrameInterruptAfterWrapRead = false;
         useDelayedFrameTimings = false;
         samples.Clear();
     }
@@ -97,6 +99,7 @@ public sealed class ApuBus
         cpuCycle = 0;
         sampleAccumulator = 0;
         samples.Clear();
+        repeatFrameInterruptAfterWrapRead = false;
         WriteFrameCounter(frameCounterControl);
         if (IsFiveStepMode)
         {
@@ -147,6 +150,7 @@ public sealed class ApuBus
         if (frameCycle == FourStepIrqCycle && !IsFrameInterruptInhibited)
         {
             frameInterrupt = true;
+            repeatFrameInterruptAfterWrapRead = useDelayedFrameTimings;
         }
 
         if (frameCycle != fourStepFinalHalfFrameCycle)
@@ -168,6 +172,8 @@ public sealed class ApuBus
 
     public byte ReadStatus()
     {
+        // Delayed frame IRQs can be reasserted if $4015 clears the flag exactly on the wrap cycle.
+        var shouldRepeatFrameInterrupt = frameInterrupt && repeatFrameInterruptAfterWrapRead && frameCycle == 0;
         var value = (byte)(
             (Pulse1.LengthCounter > 0 ? Pulse1Enable : 0) |
             (Pulse2.LengthCounter > 0 ? Pulse2Enable : 0) |
@@ -177,7 +183,8 @@ public sealed class ApuBus
             (frameInterrupt ? FrameInterruptStatus : 0) |
             (Dmc.InterruptFlag ? DmcInterruptStatus : 0));
 
-        frameInterrupt = false;
+        frameInterrupt = shouldRepeatFrameInterrupt;
+        repeatFrameInterruptAfterWrapRead = false;
         return value;
     }
 
@@ -308,6 +315,7 @@ public sealed class ApuBus
         if (IsFrameInterruptInhibited)
         {
             frameInterrupt = false;
+            repeatFrameInterruptAfterWrapRead = false;
         }
 
         if (IsFiveStepMode)
