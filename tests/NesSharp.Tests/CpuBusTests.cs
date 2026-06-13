@@ -85,9 +85,14 @@ public sealed class CpuBusTests
     [Fact]
     public void CpuIrqPushesStateAndJumpsToIrqVectorWhenInterruptsAreEnabled()
     {
-        var bus = new CpuBus(CreateCartridgeWithVectors(resetVector: 0x8000, irqVector: 0x9000, firstOpcode: 0x58));
+        var bus = new CpuBus(CreateCartridgeWithVectors(
+            resetVector: 0x8000,
+            irqVector: 0x9000,
+            firstOpcode: 0x58,
+            secondOpcode: 0xEA));
         var cpu = new Cpu6502(bus);
         cpu.Reset();
+        cpu.Step();
         cpu.Step();
         cpu.SetProgramCounter(0x8123);
         cpu.SetCycles(100);
@@ -103,6 +108,30 @@ public sealed class CpuBusTests
         Assert.Equal((byte)ProcessorStatus.Unused, bus.Read(0x01FB));
         Assert.Equal((byte)(ProcessorStatus.Unused | ProcessorStatus.InterruptDisable), cpu.Status);
         Assert.Equal(107UL, cpu.Cycles);
+    }
+
+    [Fact]
+    public void CpuCliDelaysPendingIrqForOneInstruction()
+    {
+        var bus = new CpuBus(CreateCartridgeWithVectors(
+            resetVector: 0x8000,
+            irqVector: 0x9000,
+            firstOpcode: 0x58,
+            secondOpcode: 0xEA));
+        var cpu = new Cpu6502(bus);
+        cpu.Reset();
+
+        cpu.RequestIrq();
+
+        Assert.Equal(2, cpu.Step());
+        Assert.Equal(0x8001, cpu.ProgramCounter);
+        Assert.Equal((byte)ProcessorStatus.Unused, cpu.Status);
+
+        Assert.Equal(2, cpu.Step());
+        Assert.Equal(0x8002, cpu.ProgramCounter);
+
+        Assert.Equal(7, cpu.Step());
+        Assert.Equal(0x9000, cpu.ProgramCounter);
     }
 
     [Fact]
@@ -199,7 +228,8 @@ public sealed class CpuBusTests
         ushort resetVector,
         ushort nmiVector = 0x8000,
         ushort irqVector = 0x8000,
-        byte firstOpcode = 0xEA)
+        byte firstOpcode = 0xEA,
+        byte secondOpcode = 0xEA)
     {
         var rom = new byte[16 + 16 * 1024 + 8 * 1024];
         rom[0] = (byte)'N';
@@ -209,6 +239,7 @@ public sealed class CpuBusTests
         rom[4] = 1;
         rom[5] = 1;
         rom[16] = firstOpcode;
+        rom[17] = secondOpcode;
 
         var nmiVectorOffset = 16 + 0x3FFA;
         rom[nmiVectorOffset] = (byte)(nmiVector & 0x00FF);

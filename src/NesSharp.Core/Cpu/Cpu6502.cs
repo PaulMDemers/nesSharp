@@ -16,6 +16,7 @@ public sealed class Cpu6502
     private readonly CpuBus bus;
     private bool nmiRequested;
     private bool irqRequested;
+    private bool irqDisabledForNextInstruction;
 
     public Cpu6502(CpuBus bus)
     {
@@ -47,6 +48,7 @@ public sealed class Cpu6502
         Status = UnusedFlag | InterruptDisableFlag;
         ProgramCounter = bus.ReadWordRaw(0xFFFC);
         Cycles = 7;
+        irqDisabledForNextInstruction = true;
     }
 
     public void RequestNmi()
@@ -112,19 +114,25 @@ public sealed class Cpu6502
         {
             nmiRequested = false;
             ServiceNmi();
+            irqDisabledForNextInstruction = true;
             Cycles += 7;
             return 7;
         }
 
-        if (irqRequested && (Status & InterruptDisableFlag) == 0)
+        if (irqRequested && !irqDisabledForNextInstruction)
         {
             ServiceIrq();
+            irqDisabledForNextInstruction = true;
             Cycles += 7;
             return 7;
         }
 
+        var irqDisabledBeforeInstruction = GetFlag(InterruptDisableFlag);
         var opcode = ReadByte();
         var cycles = Execute(opcode);
+        irqDisabledForNextInstruction = UpdatesIrqDisableImmediately(opcode)
+            ? GetFlag(InterruptDisableFlag)
+            : irqDisabledBeforeInstruction;
         Cycles += (uint)cycles;
         Status |= UnusedFlag;
         return cycles;
@@ -414,6 +422,11 @@ public sealed class Cpu6502
             0xED or 0xEE or 0xEF or 0xF9 or 0xFB or 0xFC or 0xFD or 0xFE or 0xFF => 3,
             _ => 2
         };
+    }
+
+    private static bool UpdatesIrqDisableImmediately(byte opcode)
+    {
+        return opcode is 0x00 or 0x40;
     }
 
     private byte ReadByte()
