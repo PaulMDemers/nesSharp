@@ -150,6 +150,33 @@ public sealed class CpuBusTests
     }
 
     [Fact]
+    public void NmiCanHijackBrkVectorAfterBreakStatusIsPushed()
+    {
+        var bus = new CpuBus(CreateCartridgeWithVectors(
+            resetVector: 0x8000,
+            nmiVector: 0x9000,
+            irqVector: 0xA000,
+            firstOpcode: 0x00));
+        var cpu = new Cpu6502(bus);
+        var requestedNmi = false;
+        bus.SetCpuCycleCallback(() =>
+        {
+            if (!requestedNmi && bus.CpuAccessCycles == 5)
+            {
+                requestedNmi = true;
+                cpu.RequestNmi();
+            }
+        });
+        cpu.Reset();
+
+        var cycles = cpu.Step();
+
+        Assert.Equal(7, cycles);
+        Assert.Equal(0x9000, cpu.ProgramCounter);
+        Assert.Equal((byte)ProcessorStatus.Break, (byte)(bus.Read(0x01FB) & (byte)ProcessorStatus.Break));
+    }
+
+    [Fact]
     public void OamDmaAddsFiveHundredThirteenCyclesWhenAligned()
     {
         var bus = new CpuBus(CreateCartridgeWithResetVector());

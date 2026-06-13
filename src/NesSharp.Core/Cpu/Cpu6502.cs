@@ -15,6 +15,7 @@ public sealed class Cpu6502
 
     private readonly CpuBus bus;
     private bool nmiRequested;
+    private bool nmiBlockedForNextInstruction;
     private bool irqRequested;
     private bool irqDisabledForNextInstruction;
 
@@ -40,6 +41,7 @@ public sealed class Cpu6502
     public void Reset()
     {
         nmiRequested = false;
+        nmiBlockedForNextInstruction = false;
         irqRequested = false;
         A = 0;
         X = 0;
@@ -59,6 +61,7 @@ public sealed class Cpu6502
     public void ClearPendingNmi()
     {
         nmiRequested = false;
+        nmiBlockedForNextInstruction = false;
     }
 
     public void RequestIrq()
@@ -110,7 +113,9 @@ public sealed class Cpu6502
         bus.BeginCpuInstruction();
         try
         {
-        if (nmiRequested)
+        var blockNmiForThisBoundary = nmiBlockedForNextInstruction;
+        nmiBlockedForNextInstruction = false;
+        if (nmiRequested && !blockNmiForThisBoundary)
         {
             nmiRequested = false;
             ServiceNmi();
@@ -538,12 +543,23 @@ public sealed class Cpu6502
 
     private void Brk()
     {
-        ProgramCounter++;
+        ReadByte();
         Push((byte)(ProgramCounter >> 8));
         Push((byte)(ProgramCounter & 0x00FF));
         Push((byte)(Status | BreakFlag | UnusedFlag));
         SetFlag(InterruptDisableFlag, true);
-        ProgramCounter = bus.ReadWord(0xFFFE);
+        ushort vector = 0xFFFE;
+        if (nmiRequested)
+        {
+            nmiRequested = false;
+            vector = 0xFFFA;
+        }
+
+        ProgramCounter = bus.ReadWord(vector);
+        if (nmiRequested)
+        {
+            nmiBlockedForNextInstruction = true;
+        }
     }
 
     private void Rti()
