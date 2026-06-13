@@ -599,6 +599,7 @@ public sealed class Cpu6502
 
     private void Rts()
     {
+        Read(ProgramCounter);
         var low = Pull();
         var high = Pull();
         ProgramCounter = (ushort)(((high << 8) | low) + 1);
@@ -627,6 +628,7 @@ public sealed class Cpu6502
 
     private void Rti()
     {
+        Read(ProgramCounter);
         Status = (byte)((Pull() & ~BreakFlag) | UnusedFlag);
         var low = Pull();
         var high = Pull();
