@@ -456,19 +456,41 @@ public sealed class Cpu6502
     {
         var baseAddress = Absolute();
         var address = (ushort)(baseAddress + X);
-        return (address, PageCrossed(baseAddress, address));
+        var crossed = PageCrossed(baseAddress, address);
+        if (crossed != 0)
+        {
+            Read(DummyIndexedAddress(baseAddress, X));
+        }
+
+        return (address, crossed);
     }
 
-    private ushort AbsoluteXAddress() => (ushort)(Absolute() + X);
+    private ushort AbsoluteXAddress()
+    {
+        var baseAddress = Absolute();
+        Read(DummyIndexedAddress(baseAddress, X));
+        return (ushort)(baseAddress + X);
+    }
 
     private (ushort Address, int PageCrossed) AbsoluteY()
     {
         var baseAddress = Absolute();
         var address = (ushort)(baseAddress + Y);
-        return (address, PageCrossed(baseAddress, address));
+        var crossed = PageCrossed(baseAddress, address);
+        if (crossed != 0)
+        {
+            Read(DummyIndexedAddress(baseAddress, Y));
+        }
+
+        return (address, crossed);
     }
 
-    private ushort AbsoluteYAddress() => (ushort)(Absolute() + Y);
+    private ushort AbsoluteYAddress()
+    {
+        var baseAddress = Absolute();
+        Read(DummyIndexedAddress(baseAddress, Y));
+        return (ushort)(baseAddress + Y);
+    }
 
     private ushort ZeroPage() => ReadByte();
 
@@ -491,7 +513,13 @@ public sealed class Cpu6502
         var high = Read((byte)(pointer + 1));
         var baseAddress = (ushort)(low | (high << 8));
         var address = (ushort)(baseAddress + Y);
-        return (address, PageCrossed(baseAddress, address));
+        var crossed = PageCrossed(baseAddress, address);
+        if (crossed != 0)
+        {
+            Read(DummyIndexedAddress(baseAddress, Y));
+        }
+
+        return (address, crossed);
     }
 
     private ushort IndirectIndexedAddress()
@@ -499,7 +527,9 @@ public sealed class Cpu6502
         var pointer = ReadByte();
         var low = Read(pointer);
         var high = Read((byte)(pointer + 1));
-        return (ushort)((low | (high << 8)) + Y);
+        var baseAddress = (ushort)(low | (high << 8));
+        Read(DummyIndexedAddress(baseAddress, Y));
+        return (ushort)(baseAddress + Y);
     }
 
     private ushort ReadWordBug(ushort address)
@@ -511,6 +541,11 @@ public sealed class Cpu6502
     }
 
     private static int PageCrossed(ushort from, ushort to) => (from & 0xFF00) == (to & 0xFF00) ? 0 : 1;
+
+    private static ushort DummyIndexedAddress(ushort baseAddress, byte index)
+    {
+        return (ushort)((baseAddress & 0xFF00) | ((baseAddress + index) & 0x00FF));
+    }
 
     private int Branch(bool condition)
     {
@@ -842,6 +877,7 @@ public sealed class Cpu6502
     private void Tas()
     {
         var baseAddress = Absolute();
+        Read(DummyIndexedAddress(baseAddress, Y));
         var address = (ushort)(baseAddress + Y);
         StackPointer = (byte)(A & X);
         Write(address, (byte)(StackPointer & ((address >> 8) + 1)));
@@ -850,6 +886,7 @@ public sealed class Cpu6502
     private void Shy()
     {
         var baseAddress = Absolute();
+        Read(DummyIndexedAddress(baseAddress, X));
         var highMask = (byte)(((baseAddress >> 8) + 1) & 0xFF);
         var low = (byte)(baseAddress + X);
         var high = (byte)(baseAddress >> 8);
@@ -864,6 +901,7 @@ public sealed class Cpu6502
     private void Shx()
     {
         var baseAddress = Absolute();
+        Read(DummyIndexedAddress(baseAddress, Y));
         var highMask = (byte)(((baseAddress >> 8) + 1) & 0xFF);
         var low = (byte)(baseAddress + Y);
         var high = (byte)(baseAddress >> 8);
