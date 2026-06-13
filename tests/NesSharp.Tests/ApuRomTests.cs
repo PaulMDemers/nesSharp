@@ -31,6 +31,19 @@ public sealed class ApuRomTests
             $"{romName} failed with status {result.Status}, code {result.ResultCode:X2}, after {result.InstructionsExecuted} instructions.{Environment.NewLine}{result.Output}");
     }
 
+    [Fact]
+    public void AggregateApuRomPasses()
+    {
+        var root = FindWorkspaceRoot(AppContext.BaseDirectory);
+        var romPath = Path.Combine(root, "test-roms", "nes-test-roms", "apu_test", "apu_test.nes");
+
+        var result = BlarggTestRunner.Run(NesMachine.LoadFile(romPath), 100_000_000);
+
+        Assert.True(
+            result.Passed,
+            $"apu_test.nes failed with status {result.Status}, code {result.ResultCode:X2}, after {result.InstructionsExecuted} instructions.{Environment.NewLine}{result.Output}");
+    }
+
     private static string FindWorkspaceRoot(string start)
     {
         var directory = new DirectoryInfo(start);
