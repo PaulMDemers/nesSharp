@@ -12,7 +12,15 @@ public sealed class ApuBus
     private const byte DmcEnable = 0x10;
     private const byte FrameInterruptStatus = 0x40;
     private const byte DmcInterruptStatus = 0x80;
-    private const int FourStepFrameCycles = 29_829;
+    private const int FirstQuarterFrameCycle = 7_457;
+    private const int FirstHalfFrameCycle = 14_913;
+    private const int DelayedFirstHalfFrameCycle = 14_914;
+    private const int ThirdQuarterFrameCycle = 22_371;
+    private const int FourStepIrqCycle = 29_829;
+    private const int FourStepFinalHalfFrameCycle = 29_829;
+    private const int DelayedFourStepFinalHalfFrameCycle = 29_830;
+    private const int FiveStepFinalHalfFrameCycle = 37_281;
+    private const int DelayedFiveStepFinalHalfFrameCycle = 37_282;
     // A CPU reset replays the five-step frame counter write just before reset-vector execution.
     private const int SoftResetFrameCounterPhase = 4;
 
@@ -30,6 +38,7 @@ public sealed class ApuBus
     private ulong cpuCycle;
     private double sampleAccumulator;
     private bool frameInterrupt;
+    private bool useDelayedFrameTimings;
     private readonly List<float> samples = [];
 
     public ApuPulseChannel Pulse1 { get; } = new(onesComplementNegate: true);
@@ -76,6 +85,7 @@ public sealed class ApuBus
         cpuCycle = 0;
         sampleAccumulator = 0;
         frameInterrupt = false;
+        useDelayedFrameTimings = false;
         samples.Clear();
     }
 
@@ -102,19 +112,29 @@ public sealed class ApuBus
         MaybeEmitSample();
 
         frameCycle++;
-        if (frameCycle == 7_457 || frameCycle == 14_913 || frameCycle == 22_371)
+        var firstHalfFrameCycle = useDelayedFrameTimings ? DelayedFirstHalfFrameCycle : FirstHalfFrameCycle;
+        var fourStepFinalHalfFrameCycle = useDelayedFrameTimings
+            ? DelayedFourStepFinalHalfFrameCycle
+            : FourStepFinalHalfFrameCycle;
+        var fiveStepFinalHalfFrameCycle = useDelayedFrameTimings
+            ? DelayedFiveStepFinalHalfFrameCycle
+            : FiveStepFinalHalfFrameCycle;
+
+        if (frameCycle == FirstQuarterFrameCycle ||
+            frameCycle == firstHalfFrameCycle ||
+            frameCycle == ThirdQuarterFrameCycle)
         {
             ClockQuarterFrame();
         }
 
-        if (frameCycle == 14_913)
+        if (frameCycle == firstHalfFrameCycle)
         {
             ClockHalfFrame();
         }
 
         if (IsFiveStepMode)
         {
-            if (frameCycle == 37_281)
+            if (frameCycle == fiveStepFinalHalfFrameCycle)
             {
                 ClockQuarterFrame();
                 ClockHalfFrame();
@@ -124,18 +144,18 @@ public sealed class ApuBus
             return;
         }
 
-        if (frameCycle != FourStepFrameCycles)
+        if (frameCycle == FourStepIrqCycle && !IsFrameInterruptInhibited)
+        {
+            frameInterrupt = true;
+        }
+
+        if (frameCycle != fourStepFinalHalfFrameCycle)
         {
             return;
         }
 
         ClockQuarterFrame();
         ClockHalfFrame();
-        if (!IsFrameInterruptInhibited)
-        {
-            frameInterrupt = true;
-        }
-
         frameCycle = 0;
     }
 
@@ -280,6 +300,7 @@ public sealed class ApuBus
     private void WriteFrameCounter(byte value, bool delayFrameRestart = false)
     {
         frameCounterControl = (byte)(value & 0xC0);
+        useDelayedFrameTimings = delayFrameRestart;
         // CPU writes restart the frame sequencer after a short parity-dependent delay.
         frameCycle = delayFrameRestart
             ? ((cpuCycle & 0x01) == 0 ? -2 : -3)
