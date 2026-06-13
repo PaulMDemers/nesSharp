@@ -693,7 +693,9 @@ public sealed class Cpu6502
 
     private void AslMemory(ushort address)
     {
-        Write(address, Asl(Read(address)));
+        var value = Read(address);
+        Write(address, value);
+        Write(address, Asl(value));
     }
 
     private byte Lsr(byte value)
@@ -706,7 +708,9 @@ public sealed class Cpu6502
 
     private void LsrMemory(ushort address)
     {
-        Write(address, Lsr(Read(address)));
+        var value = Read(address);
+        Write(address, value);
+        Write(address, Lsr(value));
     }
 
     private byte Rol(byte value)
@@ -720,7 +724,9 @@ public sealed class Cpu6502
 
     private void RolMemory(ushort address)
     {
-        Write(address, Rol(Read(address)));
+        var value = Read(address);
+        Write(address, value);
+        Write(address, Rol(value));
     }
 
     private byte Ror(byte value)
@@ -734,19 +740,25 @@ public sealed class Cpu6502
 
     private void RorMemory(ushort address)
     {
-        Write(address, Ror(Read(address)));
+        var value = Read(address);
+        Write(address, value);
+        Write(address, Ror(value));
     }
 
     private void DecMemory(ushort address)
     {
-        var value = (byte)(Read(address) - 1);
+        var original = Read(address);
+        Write(address, original);
+        var value = (byte)(original - 1);
         Write(address, value);
         SetZeroNegative(value);
     }
 
     private void IncMemory(ushort address)
     {
-        var value = (byte)(Read(address) + 1);
+        var original = Read(address);
+        Write(address, original);
+        var value = (byte)(original + 1);
         Write(address, value);
         SetZeroNegative(value);
     }
@@ -788,42 +800,54 @@ public sealed class Cpu6502
 
     private void Slo(ushort address)
     {
-        var value = Asl(Read(address));
+        var original = Read(address);
+        Write(address, original);
+        var value = Asl(original);
         Write(address, value);
         Ora(value);
     }
 
     private void Rla(ushort address)
     {
-        var value = Rol(Read(address));
+        var original = Read(address);
+        Write(address, original);
+        var value = Rol(original);
         Write(address, value);
         And(value);
     }
 
     private void Sre(ushort address)
     {
-        var value = Lsr(Read(address));
+        var original = Read(address);
+        Write(address, original);
+        var value = Lsr(original);
         Write(address, value);
         Eor(value);
     }
 
     private void Rra(ushort address)
     {
-        var value = Ror(Read(address));
+        var original = Read(address);
+        Write(address, original);
+        var value = Ror(original);
         Write(address, value);
         Adc(value);
     }
 
     private void Dcp(ushort address)
     {
-        var value = (byte)(Read(address) - 1);
+        var original = Read(address);
+        Write(address, original);
+        var value = (byte)(original - 1);
         Write(address, value);
         Compare(A, value);
     }
 
     private void Isc(ushort address)
     {
-        var value = (byte)(Read(address) + 1);
+        var original = Read(address);
+        Write(address, original);
+        var value = (byte)(original + 1);
         Write(address, value);
         Sbc(value);
     }
