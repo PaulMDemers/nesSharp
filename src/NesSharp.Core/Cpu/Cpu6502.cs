@@ -17,7 +17,9 @@ public sealed class Cpu6502
     private bool nmiRequested;
     private bool nmiBlockedForNextInstruction;
     private bool irqRequested;
+    private bool irqRequestDelayed;
     private bool irqDisabledForNextInstruction;
+    private bool isExecutingInstruction;
 
     public Cpu6502(CpuBus bus)
     {
@@ -38,11 +40,15 @@ public sealed class Cpu6502
 
     public ulong Cycles { get; private set; }
 
+    public bool IsIrqRequested => irqRequested;
+
     public void Reset()
     {
         nmiRequested = false;
         nmiBlockedForNextInstruction = false;
         irqRequested = false;
+        irqRequestDelayed = false;
+        isExecutingInstruction = false;
         A = 0;
         X = 0;
         Y = 0;
@@ -66,12 +72,18 @@ public sealed class Cpu6502
 
     public void RequestIrq()
     {
-        irqRequested = true;
+        RequestIrq(delayed: isExecutingInstruction);
+    }
+
+    public void RequestIrqDelayed()
+    {
+        RequestIrq(delayed: true);
     }
 
     public void ClearPendingIrq()
     {
         irqRequested = false;
+        irqRequestDelayed = false;
     }
 
     public void SetProgramCounter(ushort programCounter)
@@ -124,7 +136,11 @@ public sealed class Cpu6502
             return 7;
         }
 
-        if (irqRequested && !irqDisabledForNextInstruction)
+        if (irqRequestDelayed)
+        {
+            irqRequestDelayed = false;
+        }
+        else if (irqRequested && !irqDisabledForNextInstruction)
         {
             ServiceIrq();
             irqDisabledForNextInstruction = true;
@@ -134,7 +150,9 @@ public sealed class Cpu6502
 
         var irqDisabledBeforeInstruction = GetFlag(InterruptDisableFlag);
         var opcode = ReadByte();
+        isExecutingInstruction = true;
         var cycles = Execute(opcode);
+        isExecutingInstruction = false;
         irqDisabledForNextInstruction = UpdatesIrqDisableImmediately(opcode)
             ? GetFlag(InterruptDisableFlag)
             : irqDisabledBeforeInstruction;
@@ -144,7 +162,17 @@ public sealed class Cpu6502
         }
         finally
         {
+            isExecutingInstruction = false;
             bus.EndCpuInstruction();
+        }
+    }
+
+    private void RequestIrq(bool delayed)
+    {
+        if (!irqRequested)
+        {
+            irqRequested = true;
+            irqRequestDelayed = delayed;
         }
     }
 
@@ -607,6 +635,8 @@ public sealed class Cpu6502
 
     private void ServiceNmi()
     {
+        Read(ProgramCounter);
+        Read(ProgramCounter);
         Push((byte)(ProgramCounter >> 8));
         Push((byte)(ProgramCounter & 0x00FF));
         Push((byte)((Status & ~BreakFlag) | UnusedFlag));
@@ -616,11 +646,24 @@ public sealed class Cpu6502
 
     private void ServiceIrq()
     {
+        Read(ProgramCounter);
+        Read(ProgramCounter);
         Push((byte)(ProgramCounter >> 8));
         Push((byte)(ProgramCounter & 0x00FF));
         Push((byte)((Status & ~BreakFlag) | UnusedFlag));
         SetFlag(InterruptDisableFlag, true);
-        ProgramCounter = bus.ReadWord(0xFFFE);
+        ushort vector = 0xFFFE;
+        if (nmiRequested)
+        {
+            nmiRequested = false;
+            vector = 0xFFFA;
+        }
+
+        ProgramCounter = bus.ReadWord(vector);
+        if (nmiRequested)
+        {
+            nmiBlockedForNextInstruction = true;
+        }
     }
 
     private void Push(byte value)

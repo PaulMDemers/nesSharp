@@ -14,7 +14,7 @@ public sealed class NesMachine
         PpuBus = new PpuBus(cartridge);
         CpuBus = new CpuBus(cartridge, PpuBus);
         Cpu = new Cpu6502(CpuBus);
-        CpuBus.SetCpuCycleCallback(ClockOneCpuCycle);
+        CpuBus.SetCpuCycleCallback(() => ClockOneCpuCycle());
         PpuBus.NmiSuppressed += Cpu.ClearPendingNmi;
     }
 
@@ -29,6 +29,8 @@ public sealed class NesMachine
     public StandardController Controller1 => CpuBus.Controller1;
 
     public StandardController Controller2 => CpuBus.Controller2;
+
+    private bool requestIrqAfterCurrentInstruction;
 
     public static NesMachine LoadFile(string path)
     {
@@ -51,24 +53,37 @@ public sealed class NesMachine
     public int StepInstruction()
     {
         var cpuCycles = Cpu.Step();
+        if (requestIrqAfterCurrentInstruction && (CpuBus.ApuBus.IsFrameInterruptPending || CpuBus.ApuBus.IsDmcInterruptPending))
+        {
+            Cpu.RequestIrq();
+        }
+
+        requestIrqAfterCurrentInstruction = false;
         var remainingCycles = cpuCycles - CpuBus.InstructionAccessCycles;
         if (remainingCycles > 0)
         {
             for (var i = 0; i < remainingCycles; i++)
             {
-                ClockOneCpuCycle();
+                ClockOneCpuCycle(deferNewIrq: true);
             }
         }
 
         return cpuCycles;
     }
 
-    private void ClockOneCpuCycle()
+    private void ClockOneCpuCycle(bool deferNewIrq = false)
     {
         CpuBus.ApuBus.Clock();
         if (CpuBus.ApuBus.IsFrameInterruptPending || CpuBus.ApuBus.IsDmcInterruptPending)
         {
-            Cpu.RequestIrq();
+            if (deferNewIrq && !Cpu.IsIrqRequested)
+            {
+                requestIrqAfterCurrentInstruction = true;
+            }
+            else
+            {
+                RequestCpuIrq(deferNewIrq);
+            }
         }
         else
         {
@@ -79,6 +94,18 @@ public sealed class NesMachine
         if (PpuBus.PollNmi())
         {
             Cpu.RequestNmi();
+        }
+    }
+
+    private void RequestCpuIrq(bool delayed)
+    {
+        if (delayed)
+        {
+            Cpu.RequestIrqDelayed();
+        }
+        else
+        {
+            Cpu.RequestIrq();
         }
     }
 }

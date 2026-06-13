@@ -135,6 +135,44 @@ public sealed class CpuBusTests
     }
 
     [Fact]
+    public void CpuIrqRequestedDuringInstructionIsDelayedForOneInstruction()
+    {
+        var bus = new CpuBus(CreateCartridgeWithVectors(
+            resetVector: 0x8000,
+            irqVector: 0x9000,
+            firstOpcode: 0x58,
+            secondOpcode: 0xEA,
+            thirdOpcode: 0xA9,
+            fourthOpcode: 0x01,
+            fifthOpcode: 0x18,
+            sixthOpcode: 0xEA));
+        var cpu = new Cpu6502(bus);
+        cpu.Reset();
+        cpu.Step();
+        cpu.Step();
+
+        bus.SetCpuCycleCallback(() =>
+        {
+            if (bus.CpuAccessCycles == 2)
+            {
+                cpu.RequestIrq();
+            }
+        });
+        cpu.Step();
+
+        Assert.Equal(0x8004, cpu.ProgramCounter);
+        Assert.Equal((byte)0x01, cpu.A);
+
+        cpu.Step();
+
+        Assert.Equal(0x8005, cpu.ProgramCounter);
+
+        cpu.Step();
+
+        Assert.Equal(0x9000, cpu.ProgramCounter);
+    }
+
+    [Fact]
     public void CpuNmiTakesPriorityOverPendingIrq()
     {
         var bus = new CpuBus(CreateCartridgeWithVectors(resetVector: 0x8000, nmiVector: 0x9000, irqVector: 0xA000));
@@ -174,6 +212,38 @@ public sealed class CpuBusTests
         Assert.Equal(7, cycles);
         Assert.Equal(0x9000, cpu.ProgramCounter);
         Assert.Equal((byte)ProcessorStatus.Break, (byte)(bus.Read(0x01FB) & (byte)ProcessorStatus.Break));
+    }
+
+    [Fact]
+    public void NmiCanHijackIrqVectorAfterStatusIsPushed()
+    {
+        var bus = new CpuBus(CreateCartridgeWithVectors(
+            resetVector: 0x8000,
+            nmiVector: 0x9000,
+            irqVector: 0xA000,
+            firstOpcode: 0x58,
+            secondOpcode: 0xEA));
+        var cpu = new Cpu6502(bus);
+        var requestedNmi = false;
+        bus.SetCpuCycleCallback(() =>
+        {
+            if (!requestedNmi && bus.CpuAccessCycles == 5)
+            {
+                requestedNmi = true;
+                cpu.RequestNmi();
+            }
+        });
+        cpu.Reset();
+        cpu.Step();
+        cpu.Step();
+        cpu.RequestIrq();
+
+        var cycles = cpu.Step();
+
+        Assert.Equal(7, cycles);
+        Assert.Equal(0x9000, cpu.ProgramCounter);
+        Assert.Equal(0xFA, cpu.StackPointer);
+        Assert.Equal(0, bus.Read(0x01FB) & (byte)ProcessorStatus.Break);
     }
 
     [Fact]
@@ -256,7 +326,11 @@ public sealed class CpuBusTests
         ushort nmiVector = 0x8000,
         ushort irqVector = 0x8000,
         byte firstOpcode = 0xEA,
-        byte secondOpcode = 0xEA)
+        byte secondOpcode = 0xEA,
+        byte thirdOpcode = 0xEA,
+        byte fourthOpcode = 0xEA,
+        byte fifthOpcode = 0xEA,
+        byte sixthOpcode = 0xEA)
     {
         var rom = new byte[16 + 16 * 1024 + 8 * 1024];
         rom[0] = (byte)'N';
@@ -267,6 +341,10 @@ public sealed class CpuBusTests
         rom[5] = 1;
         rom[16] = firstOpcode;
         rom[17] = secondOpcode;
+        rom[18] = thirdOpcode;
+        rom[19] = fourthOpcode;
+        rom[20] = fifthOpcode;
+        rom[21] = sixthOpcode;
 
         var nmiVectorOffset = 16 + 0x3FFA;
         rom[nmiVectorOffset] = (byte)(nmiVector & 0x00FF);

@@ -8,7 +8,8 @@ public sealed class CpuInterruptRomTests
     public static TheoryData<string> PassingCpuInterruptRoms => new()
     {
         "1-cli_latency.nes",
-        "2-nmi_and_brk.nes"
+        "2-nmi_and_brk.nes",
+        "3-nmi_and_irq.nes"
     };
 
     [Theory]
