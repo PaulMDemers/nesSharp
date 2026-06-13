@@ -223,7 +223,7 @@ public sealed class ApuBus
                 WriteStatus(value);
                 break;
             case 0x4017:
-                WriteFrameCounter(value);
+                WriteFrameCounter(value, delayFrameRestart: true);
                 break;
         }
     }
@@ -277,10 +277,13 @@ public sealed class ApuBus
         Dmc.SetEnabled((statusEnable & DmcEnable) != 0);
     }
 
-    private void WriteFrameCounter(byte value)
+    private void WriteFrameCounter(byte value, bool delayFrameRestart = false)
     {
         frameCounterControl = (byte)(value & 0xC0);
-        frameCycle = 0;
+        // CPU writes restart the frame sequencer after a short parity-dependent delay.
+        frameCycle = delayFrameRestart
+            ? ((cpuCycle & 0x01) == 0 ? -2 : -3)
+            : 0;
         if (IsFrameInterruptInhibited)
         {
             frameInterrupt = false;

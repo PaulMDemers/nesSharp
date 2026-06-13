@@ -10,6 +10,7 @@ public sealed class ApuRomTests
         "1-len_ctr.nes",
         "2-len_table.nes",
         "3-irq_flag.nes",
+        "4-jitter.nes",
         "7-dmc_basics.nes",
         "8-dmc_rates.nes"
     };
