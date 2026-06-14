@@ -127,44 +127,44 @@ public sealed class Cpu6502
         bus.BeginCpuInstruction();
         try
         {
-        var blockNmiForThisBoundary = nmiBlockedForNextInstruction;
-        nmiBlockedForNextInstruction = false;
-        if (nmiRequested && !blockNmiForThisBoundary)
-        {
-            nmiRequested = false;
-            ServiceNmi();
-            irqDisabledForNextInstruction = true;
-            Cycles += 7;
-            return 7;
-        }
+            var blockNmiForThisBoundary = nmiBlockedForNextInstruction;
+            nmiBlockedForNextInstruction = false;
+            if (nmiRequested && !blockNmiForThisBoundary)
+            {
+                nmiRequested = false;
+                ServiceNmi();
+                irqDisabledForNextInstruction = true;
+                Cycles += 7;
+                return 7;
+            }
 
-        if (irqRequestDelayed)
-        {
-            irqRequestDelayed = false;
-        }
-        else if (irqRequested && !irqDisabledForNextInstruction)
-        {
-            ServiceIrq();
-            irqDisabledForNextInstruction = true;
-            Cycles += 7;
-            return 7;
-        }
+            if (irqRequestDelayed)
+            {
+                irqRequestDelayed = false;
+            }
+            else if (irqRequested && !irqDisabledForNextInstruction)
+            {
+                ServiceIrq();
+                irqDisabledForNextInstruction = true;
+                Cycles += 7;
+                return 7;
+            }
 
-        var irqDisabledBeforeInstruction = GetFlag(InterruptDisableFlag);
-        var opcode = ReadByte();
-        currentOpcode = opcode;
-        currentBranchPageCrossed = false;
-        isExecutingInstruction = true;
-        var cycles = Execute(opcode);
-        currentOpcode = 0;
-        currentBranchPageCrossed = false;
-        isExecutingInstruction = false;
-        irqDisabledForNextInstruction = UpdatesIrqDisableImmediately(opcode)
-            ? GetFlag(InterruptDisableFlag)
-            : irqDisabledBeforeInstruction;
-        Cycles += (uint)cycles;
-        Status |= UnusedFlag;
-        return cycles;
+            var irqDisabledBeforeInstruction = GetFlag(InterruptDisableFlag);
+            var opcode = ReadByte();
+            currentOpcode = opcode;
+            currentBranchPageCrossed = false;
+            isExecutingInstruction = true;
+            var cycles = Execute(opcode);
+            currentOpcode = 0;
+            currentBranchPageCrossed = false;
+            isExecutingInstruction = false;
+            irqDisabledForNextInstruction = UpdatesIrqDisableImmediately(opcode)
+                ? GetFlag(InterruptDisableFlag)
+                : irqDisabledBeforeInstruction;
+            Cycles += (uint)cycles;
+            Status |= UnusedFlag;
+            return cycles;
         }
         finally
         {
@@ -190,6 +190,8 @@ public sealed class Cpu6502
         {
             0x4C => bus.InstructionAccessCycles == 2,
             0xAD => bus.InstructionAccessCycles is 2 or 3,
+            0x8D => bus.InstructionAccessCycles is 2 or 3,
+            0x9D => bus.InstructionAccessCycles == 4,
             0x10 or 0x30 or 0x50 or 0x70 or 0x90 or 0xB0 or 0xD0 or 0xF0 => currentBranchPageCrossed && bus.InstructionAccessCycles == 3,
             _ => false
         };

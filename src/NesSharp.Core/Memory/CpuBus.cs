@@ -222,7 +222,7 @@ public sealed class CpuBus
             ppuBus.WriteOamDmaByte(ReadRaw((ushort)(baseAddress + i)));
         }
 
-        var dmaCycles = nextDmaCycleIsGet ? 514 : 513;
+        var dmaCycles = nextDmaCycleIsGet ? 515 : 514;
         for (var i = 0; i < dmaCycles; i++)
         {
             ClockCpuAccess(instructionAccess: false);

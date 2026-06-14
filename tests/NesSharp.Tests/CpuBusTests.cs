@@ -247,7 +247,7 @@ public sealed class CpuBusTests
     }
 
     [Fact]
-    public void OamDmaAddsFiveHundredThirteenCyclesWhenAligned()
+    public void OamDmaAddsFiveHundredFourteenCyclesWhenAligned()
     {
         var bus = new CpuBus(CreateCartridgeWithResetVector());
 
@@ -255,7 +255,7 @@ public sealed class CpuBusTests
         bus.Write(0x4014, 0x02);
         bus.EndCpuInstruction();
 
-        Assert.Equal(514, bus.CpuAccessCycles);
+        Assert.Equal(515, bus.CpuAccessCycles);
         Assert.Equal(1, bus.InstructionAccessCycles);
     }
 
@@ -271,7 +271,7 @@ public sealed class CpuBusTests
         bus.Write(0x4014, 0x02);
         bus.EndCpuInstruction();
 
-        Assert.Equal(515, bus.CpuAccessCycles);
+        Assert.Equal(516, bus.CpuAccessCycles);
         Assert.Equal(1, bus.InstructionAccessCycles);
     }
 
@@ -285,7 +285,7 @@ public sealed class CpuBusTests
         bus.Write(0x4014, 0x02);
         bus.EndCpuInstruction();
 
-        Assert.Equal(515, bus.CpuAccessCycles);
+        Assert.Equal(516, bus.CpuAccessCycles);
         Assert.Equal(2, bus.InstructionAccessCycles);
     }
 
@@ -303,7 +303,7 @@ public sealed class CpuBusTests
         bus.Write(0x4014, 0x02);
         bus.EndCpuInstruction();
 
-        Assert.Equal(517, bus.CpuAccessCycles);
+        Assert.Equal(518, bus.CpuAccessCycles);
         Assert.Equal(1, bus.InstructionAccessCycles);
         Assert.False(bus.ApuBus.IsDmcDmaPending);
         Assert.Equal(0, bus.ApuBus.Dmc.BytesRemaining);
