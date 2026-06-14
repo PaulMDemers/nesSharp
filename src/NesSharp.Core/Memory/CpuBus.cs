@@ -217,14 +217,20 @@ public sealed class CpuBus
     private void RunOamDma(byte page)
     {
         var baseAddress = page << 8;
-        for (var i = 0; i < 256; i++)
+        var setupCycles = nextDmaCycleIsGet ? 3 : 2;
+        for (var i = 0; i < setupCycles; i++)
         {
-            ppuBus.WriteOamDmaByte(ReadRaw((ushort)(baseAddress + i)));
+            ClockCpuAccess(instructionAccess: false);
+            RunPendingDmcDma();
         }
 
-        var dmaCycles = nextDmaCycleIsGet ? 515 : 514;
-        for (var i = 0; i < dmaCycles; i++)
+        for (var i = 0; i < 256; i++)
         {
+            var value = ReadRaw((ushort)(baseAddress + i));
+            ClockCpuAccess(instructionAccess: false);
+            RunPendingDmcDma();
+
+            ppuBus.WriteOamDmaByte(value);
             ClockCpuAccess(instructionAccess: false);
             RunPendingDmcDma();
         }
