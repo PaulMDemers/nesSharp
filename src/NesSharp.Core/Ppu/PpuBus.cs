@@ -225,6 +225,7 @@ public sealed class PpuBus
 
             EvaluateSpriteOverflow();
             RunBackgroundFetchStep();
+            RunSpritePatternFetchStep();
             RenderCurrentPixel();
             ShiftBackgroundRegisters();
             EvaluateSpriteZeroHit();
@@ -240,6 +241,13 @@ public sealed class PpuBus
             Dot is not (>= 1 and <= 256 or >= 321 and <= 336))
         {
             return;
+        }
+
+        // MMC3 clocks from the rising edge of PPU A12 during rendered fetches.
+        // This approximates the first high background fetch in both normal and inverted pattern-table modes.
+        if (Dot is 1 or 321 && (registers[0] & 0x10) != 0)
+        {
+            cartridge.NotifyPpuAddress(0x1000);
         }
 
         switch (Dot & 0x07)
@@ -292,6 +300,19 @@ public sealed class PpuBus
                 LoadBackgroundShiftRegister();
                 break;
         }
+    }
+
+    private void RunSpritePatternFetchStep()
+    {
+        if (!IsSpriteRenderingEnabled ||
+            !IsRenderingScanline ||
+            Dot != 257)
+        {
+            return;
+        }
+
+        var spritePatternBase = (registers[0] & 0x08) == 0 ? 0x0000 : 0x1000;
+        cartridge.NotifyPpuAddress((ushort)spritePatternBase);
     }
 
     private void LoadBackgroundShiftRegister()

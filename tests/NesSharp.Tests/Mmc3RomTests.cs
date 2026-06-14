@@ -8,7 +8,9 @@ public sealed class Mmc3RomTests
     public static TheoryData<string> PassingMmc3Roms => new()
     {
         "1-clocking.nes",
+        "2-details.nes",
         "3-A12_clocking.nes",
+        "4-scanline_timing.nes",
         "5-MMC3.nes"
     };
 
