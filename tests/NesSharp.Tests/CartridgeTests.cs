@@ -163,6 +163,20 @@ public sealed class CartridgeTests
     }
 
     [Fact]
+    public void Mapper4SupportsSinglePrgRomBank()
+    {
+        var rom = CreateRom(prgBanks: 1, chrBanks: 1, mapper: 4);
+        SetPrg8KBankMarker(rom, bank: 0, 0x10);
+        SetPrg8KBankMarker(rom, bank: 1, 0x11);
+
+        var cartridge = INesRomLoader.Load(rom);
+
+        Assert.Equal(0x10, cartridge.CpuRead(0x8000));
+        Assert.Equal(0x10, cartridge.CpuRead(0xC000));
+        Assert.Equal(0x11, cartridge.CpuRead(0xE000));
+    }
+
+    [Fact]
     public void Mapper4SwitchesPrgBanks()
     {
         var rom = CreateRom(prgBanks: 4, chrBanks: 1, mapper: 4);

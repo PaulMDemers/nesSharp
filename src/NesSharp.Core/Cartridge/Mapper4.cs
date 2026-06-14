@@ -23,9 +23,9 @@ public sealed class Mapper4 : IMapper
 
     public Mapper4(CartridgeHeader header, byte[] prgRom, byte[] chrMemory)
     {
-        if (header.PrgRomBanks < 2)
+        if (header.PrgRomBanks < 1)
         {
-            throw new InvalidRomException($"Mapper 4 requires at least 2 PRG banks, got {header.PrgRomBanks}.");
+            throw new InvalidRomException("Mapper 4 requires at least one PRG ROM bank.");
         }
 
         this.header = header;
