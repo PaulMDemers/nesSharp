@@ -64,6 +64,11 @@ public sealed class CpuBus
         return value;
     }
 
+    public void ClockSyntheticInstructionAccess()
+    {
+        ClockCpuAccess(advanceDmaPhase: false);
+    }
+
     public byte ReadRaw(ushort address)
     {
         return address switch
@@ -129,7 +134,7 @@ public sealed class CpuBus
         return (ushort)(low | (high << 8));
     }
 
-    private void ClockCpuAccess(bool instructionAccess = true)
+    private void ClockCpuAccess(bool instructionAccess = true, bool advanceDmaPhase = true)
     {
         if (!trackCpuAccessCycles)
         {
@@ -143,7 +148,10 @@ public sealed class CpuBus
 
         CpuAccessCycles++;
         cpuCycleElapsed?.Invoke();
-        nextDmaCycleIsGet = !nextDmaCycleIsGet;
+        if (advanceDmaPhase)
+        {
+            nextDmaCycleIsGet = !nextDmaCycleIsGet;
+        }
     }
 
     private void SetOpenBus(byte value)

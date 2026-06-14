@@ -9,7 +9,8 @@ public sealed class CpuInterruptRomTests
     {
         "1-cli_latency.nes",
         "2-nmi_and_brk.nes",
-        "3-nmi_and_irq.nes"
+        "3-nmi_and_irq.nes",
+        "5-branch_delays_irq.nes"
     };
 
     [Theory]

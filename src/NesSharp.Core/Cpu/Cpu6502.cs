@@ -20,6 +20,8 @@ public sealed class Cpu6502
     private bool irqRequestDelayed;
     private bool irqDisabledForNextInstruction;
     private bool isExecutingInstruction;
+    private byte currentOpcode;
+    private bool currentBranchPageCrossed;
 
     public Cpu6502(CpuBus bus)
     {
@@ -150,8 +152,12 @@ public sealed class Cpu6502
 
         var irqDisabledBeforeInstruction = GetFlag(InterruptDisableFlag);
         var opcode = ReadByte();
+        currentOpcode = opcode;
+        currentBranchPageCrossed = false;
         isExecutingInstruction = true;
         var cycles = Execute(opcode);
+        currentOpcode = 0;
+        currentBranchPageCrossed = false;
         isExecutingInstruction = false;
         irqDisabledForNextInstruction = UpdatesIrqDisableImmediately(opcode)
             ? GetFlag(InterruptDisableFlag)
@@ -162,6 +168,8 @@ public sealed class Cpu6502
         }
         finally
         {
+            currentOpcode = 0;
+            currentBranchPageCrossed = false;
             isExecutingInstruction = false;
             bus.EndCpuInstruction();
         }
@@ -172,8 +180,19 @@ public sealed class Cpu6502
         if (!irqRequested)
         {
             irqRequested = true;
-            irqRequestDelayed = delayed;
+            irqRequestDelayed = delayed && !CanCurrentInstructionAcceptLateIrq();
         }
+    }
+
+    private bool CanCurrentInstructionAcceptLateIrq()
+    {
+        return currentOpcode switch
+        {
+            0x4C => bus.InstructionAccessCycles == 2,
+            0xAD => bus.InstructionAccessCycles is 2 or 3,
+            0x10 or 0x30 or 0x50 or 0x70 or 0x90 or 0xB0 or 0xD0 or 0xF0 => currentBranchPageCrossed && bus.InstructionAccessCycles == 3,
+            _ => false
+        };
     }
 
     private int Execute(byte opcode)
@@ -584,8 +603,24 @@ public sealed class Cpu6502
         }
 
         var oldPc = ProgramCounter;
-        ProgramCounter = (ushort)(ProgramCounter + offset);
-        return 3 + PageCrossed(oldPc, ProgramCounter);
+        var target = (ushort)(ProgramCounter + offset);
+        currentBranchPageCrossed = PageCrossed(oldPc, target) != 0;
+        if (currentBranchPageCrossed && irqRequestDelayed)
+        {
+            irqRequestDelayed = false;
+        }
+
+        bus.ClockSyntheticInstructionAccess();
+        if (!currentBranchPageCrossed)
+        {
+            ProgramCounter = target;
+            return 3;
+        }
+
+        ProgramCounter = (ushort)((oldPc & 0xFF00) | (target & 0x00FF));
+        bus.ClockSyntheticInstructionAccess();
+        ProgramCounter = target;
+        return 4;
     }
 
     private void Jsr()

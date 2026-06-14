@@ -276,6 +276,20 @@ public sealed class CpuBusTests
     }
 
     [Fact]
+    public void SyntheticInstructionAccessDoesNotAdvanceDmaPhase()
+    {
+        var bus = new CpuBus(CreateCartridgeWithResetVector());
+
+        bus.BeginCpuInstruction();
+        bus.ClockSyntheticInstructionAccess();
+        bus.Write(0x4014, 0x02);
+        bus.EndCpuInstruction();
+
+        Assert.Equal(515, bus.CpuAccessCycles);
+        Assert.Equal(2, bus.InstructionAccessCycles);
+    }
+
+    [Fact]
     public void OamDmaServicesPendingDmcDmaDuringTransfer()
     {
         var bus = new CpuBus(CreateCartridgeWithResetVector());
