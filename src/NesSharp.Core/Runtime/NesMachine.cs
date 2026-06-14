@@ -53,7 +53,7 @@ public sealed class NesMachine
     public int StepInstruction()
     {
         var cpuCycles = Cpu.Step();
-        if (requestIrqAfterCurrentInstruction && (CpuBus.ApuBus.IsFrameInterruptPending || CpuBus.ApuBus.IsDmcInterruptPending))
+        if (requestIrqAfterCurrentInstruction && IsCpuIrqPending)
         {
             Cpu.RequestIrq();
         }
@@ -74,7 +74,7 @@ public sealed class NesMachine
     private void ClockOneCpuCycle(bool deferNewIrq = false)
     {
         CpuBus.ApuBus.Clock();
-        if (CpuBus.ApuBus.IsFrameInterruptPending || CpuBus.ApuBus.IsDmcInterruptPending)
+        if (IsCpuIrqPending)
         {
             if (deferNewIrq && !Cpu.IsIrqRequested)
             {
@@ -108,4 +108,8 @@ public sealed class NesMachine
             Cpu.RequestIrq();
         }
     }
+
+    private bool IsCpuIrqPending => CpuBus.ApuBus.IsFrameInterruptPending ||
+        CpuBus.ApuBus.IsDmcInterruptPending ||
+        Cartridge.IsIrqPending;
 }

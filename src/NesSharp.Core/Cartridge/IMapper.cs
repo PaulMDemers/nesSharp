@@ -6,6 +6,8 @@ public interface IMapper
 
     ReadOnlySpan<byte> SaveRam { get; }
 
+    bool IsIrqPending { get; }
+
     byte CpuRead(ushort address);
 
     void CpuWrite(ushort address, byte value);
@@ -13,6 +15,8 @@ public interface IMapper
     byte PpuRead(ushort address);
 
     void PpuWrite(ushort address, byte value);
+
+    void NotifyPpuAddress(ushort address);
 
     void LoadSaveRam(ReadOnlySpan<byte> data);
 }

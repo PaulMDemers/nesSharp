@@ -622,6 +622,7 @@ public sealed class PpuBus
 
         temporaryVramAddress = (ushort)((temporaryVramAddress & 0x7F00) | value);
         currentVramAddress = temporaryVramAddress;
+        cartridge.NotifyPpuAddress(currentVramAddress);
         renderBackgroundFromCurrentVramAddress = currentVramAddress < 0x2000;
         backgroundShiftRegister = default;
         if (renderBackgroundFromCurrentVramAddress && ShouldPrimeBackgroundShiftRegister())
@@ -661,6 +662,7 @@ public sealed class PpuBus
     private void IncrementVramAddress()
     {
         currentVramAddress = (ushort)((currentVramAddress + VramIncrement) & 0x7FFF);
+        cartridge.NotifyPpuAddress(currentVramAddress);
     }
 
     private byte ReadMemory(ushort address)

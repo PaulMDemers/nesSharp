@@ -1,0 +1,44 @@
+using NesSharp.Core.Runtime;
+using NesSharp.Core.Testing;
+
+namespace NesSharp.Tests;
+
+public sealed class Mmc3RomTests
+{
+    public static TheoryData<string> PassingMmc3Roms => new()
+    {
+        "1-clocking.nes",
+        "3-A12_clocking.nes",
+        "5-MMC3.nes"
+    };
+
+    [Theory]
+    [MemberData(nameof(PassingMmc3Roms))]
+    public void Mmc3RomsPass(string romName)
+    {
+        var root = FindWorkspaceRoot(AppContext.BaseDirectory);
+        var romPath = Path.Combine(root, "test-roms", "nes-test-roms", "mmc3_test", romName);
+
+        var result = BlarggTestRunner.Run(NesMachine.LoadFile(romPath), 100_000_000);
+
+        Assert.True(
+            result.Passed,
+            $"{romName} failed with status {result.Status}, code {result.ResultCode:X2}, after {result.InstructionsExecuted} instructions.{Environment.NewLine}{result.Output}");
+    }
+
+    private static string FindWorkspaceRoot(string start)
+    {
+        var directory = new DirectoryInfo(start);
+        while (directory is not null)
+        {
+            if (Directory.Exists(Path.Combine(directory.FullName, "test-roms", "nes-test-roms", "mmc3_test")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not find workspace root containing mmc3_test ROMs.");
+    }
+}

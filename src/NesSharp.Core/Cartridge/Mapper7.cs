@@ -28,6 +28,8 @@ public sealed class Mapper7 : IMapper
 
     public ReadOnlySpan<byte> SaveRam => prgRam;
 
+    public bool IsIrqPending => false;
+
     public byte CpuRead(ushort address)
     {
         return address switch
@@ -73,6 +75,10 @@ public sealed class Mapper7 : IMapper
         }
 
         chrMemory[address % chrMemory.Length] = value;
+    }
+
+    public void NotifyPpuAddress(ushort address)
+    {
     }
 
     public void LoadSaveRam(ReadOnlySpan<byte> data)
