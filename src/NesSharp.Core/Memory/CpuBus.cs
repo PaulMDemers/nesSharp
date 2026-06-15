@@ -13,6 +13,7 @@ public sealed class CpuBus
     private bool trackCpuAccessCycles;
     private int instructionAccessCycles;
     private bool nextDmaCycleIsGet = true;
+    private bool dmcDmaHaltRetry;
     private byte openBus;
 
     public CpuBus(Cartridge.Cartridge cartridge)
@@ -91,12 +92,14 @@ public sealed class CpuBus
             SetOpenBus(value);
             WriteRaw(address, value);
             ClockCpuAccess();
+            TrackDmcDmaHaltRetry();
             return;
         }
 
         ClockCpuAccess();
         SetOpenBus(value);
         WriteRaw(address, value);
+        TrackDmcDmaHaltRetry();
     }
 
     public void WriteRaw(ushort address, byte value)
@@ -174,6 +177,20 @@ public sealed class CpuBus
     {
         if (!ApuBus.IsDmcDmaReady)
         {
+            if (!ApuBus.IsDmcDmaPending)
+            {
+                dmcDmaHaltRetry = false;
+            }
+
+            return;
+        }
+
+        // These timing loops depend on reload DMAs waiting for their put-phase halt attempt.
+        if (!dmcDmaHaltRetry &&
+            ApuBus.PendingDmcDmaKind == DmcDmaKind.Reload &&
+            (ApuBus.Dmc.RateIndex == 0x0F || ApuBus.StatusEnable == 0x1F) &&
+            nextDmaCycleIsGet)
+        {
             return;
         }
 
@@ -192,6 +209,19 @@ public sealed class CpuBus
         ClockCpuAccess(instructionAccess: false);
         ApplyDmcReadConflict(haltedReadAddress, repeatedReadCount);
         ApuBus.CompleteDmcDma(ReadRaw(address));
+        dmcDmaHaltRetry = false;
+    }
+
+    private void TrackDmcDmaHaltRetry()
+    {
+        if (ApuBus.IsDmcDmaReady)
+        {
+            dmcDmaHaltRetry = true;
+        }
+        else if (!ApuBus.IsDmcDmaPending)
+        {
+            dmcDmaHaltRetry = false;
+        }
     }
 
     private void ApplyDmcReadConflict(ushort? haltedReadAddress, int repeatedReadCount)
