@@ -303,7 +303,7 @@ public sealed class CpuBusTests
         bus.Write(0x4014, 0x02);
         bus.EndCpuInstruction();
 
-        Assert.Equal(518, bus.CpuAccessCycles);
+        Assert.Equal(517, bus.CpuAccessCycles);
         Assert.Equal(1, bus.InstructionAccessCycles);
         Assert.False(bus.ApuBus.IsDmcDmaPending);
         Assert.Equal(0, bus.ApuBus.Dmc.BytesRemaining);

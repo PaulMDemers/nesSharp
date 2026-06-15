@@ -229,18 +229,32 @@ public sealed class CpuBus
         for (var i = 0; i < setupCycles; i++)
         {
             ClockCpuAccess(instructionAccess: false);
-            RunPendingDmcDma();
         }
 
         for (var i = 0; i < 256; i++)
         {
+            RunDmcDmaDuringOamDma();
+
             var value = ReadRaw((ushort)(baseAddress + i));
             ClockCpuAccess(instructionAccess: false);
-            RunPendingDmcDma();
 
             ppuBus.WriteOamDmaByte(value);
             ClockCpuAccess(instructionAccess: false);
-            RunPendingDmcDma();
         }
+
+        RunPendingDmcDma();
+    }
+
+    private void RunDmcDmaDuringOamDma()
+    {
+        if (!ApuBus.IsDmcDmaReady)
+        {
+            return;
+        }
+
+        var address = ApuBus.PendingDmcDmaAddress;
+        ClockCpuAccess(instructionAccess: false);
+        ApuBus.CompleteDmcDma(ReadRaw(address));
+        ClockCpuAccess(instructionAccess: false);
     }
 }

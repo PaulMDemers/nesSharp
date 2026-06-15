@@ -339,6 +339,7 @@ public sealed class ApuBusTests
         Assert.True(apu.IsDmcDmaPending);
         Assert.False(apu.IsDmcDmaReady);
         Assert.Equal(0xC040, apu.PendingDmcDmaAddress);
+        Assert.Equal(DmcDmaKind.Load, apu.PendingDmcDmaKind);
         Assert.Equal(0x10, apu.ReadStatus() & 0x10);
     }
 
@@ -533,6 +534,7 @@ public sealed class ApuBusTests
         ClockDmcDmaReady(bus.ApuBus);
 
         Assert.True(bus.ApuBus.IsDmcDmaPending);
+        Assert.Equal(DmcDmaKind.Reload, bus.ApuBus.PendingDmcDmaKind);
 
         bus.BeginCpuInstruction();
         bus.Read(0x8000);

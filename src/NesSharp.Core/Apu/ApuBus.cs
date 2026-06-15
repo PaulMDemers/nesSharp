@@ -68,6 +68,8 @@ public sealed class ApuBus
 
     public ushort PendingDmcDmaAddress => Dmc.PendingSampleAddress;
 
+    public DmcDmaKind PendingDmcDmaKind => Dmc.PendingSampleFetchKind;
+
     public void CompleteDmcDma(byte value)
     {
         Dmc.CompleteSampleFetch(value);

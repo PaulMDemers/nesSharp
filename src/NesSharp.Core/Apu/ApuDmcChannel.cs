@@ -1,5 +1,11 @@
 namespace NesSharp.Core.Apu;
 
+public enum DmcDmaKind
+{
+    Load,
+    Reload
+}
+
 public sealed class ApuDmcChannel
 {
     private static readonly ushort[] NtscPeriods =
@@ -16,6 +22,7 @@ public sealed class ApuDmcChannel
     private ushort pendingSampleAddress;
     private bool sampleFetchPending;
     private byte sampleFetchDelayCycles;
+    private DmcDmaKind pendingSampleFetchKind;
 
     public bool IrqEnabled { get; private set; }
 
@@ -45,6 +52,8 @@ public sealed class ApuDmcChannel
 
     public ushort PendingSampleAddress => pendingSampleAddress;
 
+    public DmcDmaKind PendingSampleFetchKind => pendingSampleFetchKind;
+
     public bool SampleBufferEmpty => sampleBuffer is null;
 
     public byte BitsRemaining => bitsRemaining;
@@ -70,6 +79,7 @@ public sealed class ApuDmcChannel
         pendingSampleAddress = 0;
         sampleFetchPending = false;
         sampleFetchDelayCycles = 0;
+        pendingSampleFetchKind = DmcDmaKind.Load;
     }
 
     public void WriteControl(byte value)
@@ -107,7 +117,7 @@ public sealed class ApuDmcChannel
                 RestartSample();
             }
 
-            RequestSampleFetch();
+            RequestSampleFetch(DmcDmaKind.Load);
         }
         else
         {
@@ -204,17 +214,17 @@ public sealed class ApuDmcChannel
         if (sampleBuffer is null)
         {
             silence = true;
-            RequestSampleFetch();
+            RequestSampleFetch(DmcDmaKind.Reload);
             return;
         }
 
         silence = false;
         shiftRegister = sampleBuffer.Value;
         sampleBuffer = null;
-        RequestSampleFetch();
+        RequestSampleFetch(DmcDmaKind.Reload);
     }
 
-    private void RequestSampleFetch()
+    private void RequestSampleFetch(DmcDmaKind kind)
     {
         if (sampleFetchPending || sampleBuffer is not null || BytesRemaining == 0)
         {
@@ -222,6 +232,7 @@ public sealed class ApuDmcChannel
         }
 
         pendingSampleAddress = CurrentAddress;
+        pendingSampleFetchKind = kind;
         sampleFetchPending = true;
         sampleFetchDelayCycles = 1;
     }
