@@ -521,6 +521,40 @@ public sealed class ApuBusTests
     }
 
     [Fact]
+    public void DmcLoadDmaWaitsForSecondFollowingApuCycle()
+    {
+        var bus = new CpuBus(CreateCartridge());
+        bus.SetCpuCycleCallback(bus.ApuBus.Clock);
+        bus.WriteRaw(0x4013, 0x00);
+
+        bus.BeginCpuInstruction();
+        bus.Write(0x4015, 0x10);
+        bus.EndCpuInstruction();
+
+        bus.BeginCpuInstruction();
+        bus.Read(0x8000);
+        bus.EndCpuInstruction();
+
+        Assert.True(bus.ApuBus.IsDmcDmaPending);
+        Assert.Equal(1, bus.CpuAccessCycles);
+
+        bus.BeginCpuInstruction();
+        bus.Read(0x8000);
+        bus.EndCpuInstruction();
+
+        Assert.True(bus.ApuBus.IsDmcDmaPending);
+        Assert.Equal(1, bus.CpuAccessCycles);
+
+        bus.BeginCpuInstruction();
+        bus.Read(0x8000);
+        bus.EndCpuInstruction();
+
+        Assert.False(bus.ApuBus.IsDmcDmaPending);
+        Assert.Equal(4, bus.CpuAccessCycles);
+        Assert.Equal(1, bus.InstructionAccessCycles);
+    }
+
+    [Fact]
     public void DmcReloadDmaAddsFourCpuCycles()
     {
         var bus = new CpuBus(CreateCartridge(dmcSample: 0b0000_0011));

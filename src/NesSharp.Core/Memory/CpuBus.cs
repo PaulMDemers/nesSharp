@@ -14,6 +14,7 @@ public sealed class CpuBus
     private int instructionAccessCycles;
     private bool nextDmaCycleIsGet = true;
     private bool dmcDmaHaltRetry;
+    private int dmcLoadDmaHaltDelayCycles;
     private byte openBus;
 
     public CpuBus(Cartridge.Cartridge cartridge)
@@ -92,6 +93,7 @@ public sealed class CpuBus
             SetOpenBus(value);
             WriteRaw(address, value);
             ClockCpuAccess();
+            ArmDmcLoadDmaHaltDelay();
             TrackDmcDmaHaltRetry();
             return;
         }
@@ -99,6 +101,7 @@ public sealed class CpuBus
         ClockCpuAccess();
         SetOpenBus(value);
         WriteRaw(address, value);
+        AdvanceDmcDmaHaltDelay();
         TrackDmcDmaHaltRetry();
     }
 
@@ -180,8 +183,15 @@ public sealed class CpuBus
             if (!ApuBus.IsDmcDmaPending)
             {
                 dmcDmaHaltRetry = false;
+                dmcLoadDmaHaltDelayCycles = 0;
             }
 
+            return;
+        }
+
+        if (dmcLoadDmaHaltDelayCycles > 0)
+        {
+            dmcLoadDmaHaltDelayCycles--;
             return;
         }
 
@@ -210,10 +220,16 @@ public sealed class CpuBus
         ApplyDmcReadConflict(haltedReadAddress, repeatedReadCount);
         ApuBus.CompleteDmcDma(ReadRaw(address));
         dmcDmaHaltRetry = false;
+        dmcLoadDmaHaltDelayCycles = 0;
     }
 
     private void TrackDmcDmaHaltRetry()
     {
+        if (dmcLoadDmaHaltDelayCycles > 0)
+        {
+            return;
+        }
+
         if (ApuBus.IsDmcDmaReady)
         {
             dmcDmaHaltRetry = true;
@@ -221,6 +237,24 @@ public sealed class CpuBus
         else if (!ApuBus.IsDmcDmaPending)
         {
             dmcDmaHaltRetry = false;
+        }
+    }
+
+    private void ArmDmcLoadDmaHaltDelay()
+    {
+        if (cpuCycleElapsed is not null &&
+            ApuBus.IsDmcDmaPending &&
+            ApuBus.PendingDmcDmaKind == DmcDmaKind.Load)
+        {
+            dmcLoadDmaHaltDelayCycles = 2;
+        }
+    }
+
+    private void AdvanceDmcDmaHaltDelay()
+    {
+        if (dmcLoadDmaHaltDelayCycles > 0)
+        {
+            dmcLoadDmaHaltDelayCycles--;
         }
     }
 
