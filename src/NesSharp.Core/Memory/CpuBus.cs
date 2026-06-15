@@ -86,6 +86,14 @@ public sealed class CpuBus
 
     public void Write(ushort address, byte value)
     {
+        if (address == 0x4015)
+        {
+            SetOpenBus(value);
+            WriteRaw(address, value);
+            ClockCpuAccess();
+            return;
+        }
+
         ClockCpuAccess();
         SetOpenBus(value);
         WriteRaw(address, value);
