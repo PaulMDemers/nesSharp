@@ -62,13 +62,13 @@ Battery-backed saves are loaded from and written to a `.sav` file beside the ROM
 - Includes an initial WinForms desktop host with framebuffer display, audio playback, ROM loading, reset/pause actions, and keyboard input for controller 1.
 - Runs desktop emulation on a background frame loop with UI-thread framebuffer presentation.
 - Includes a desktop power-cycle command that rebuilds mapper/machine state while preserving battery-backed save data.
-- Passes `ppu_vbl_nmi` ROMs `01-vbl_basics` through `09-even_odd_frames`.
+- Passes all `ppu_vbl_nmi` ROM singles, `01-vbl_basics` through `10-even_odd_timing`.
 - Passes all `vbl_nmi_timing` ROMs through the `$00F8` result runner.
 - Passes `ppu_open_bus`, `ppu_read_buffer`, `oam_read`, and `oam_stress`.
 - Includes focused xUnit coverage using synthetic ROMs and the downloaded `nestest.nes`.
 
 ## Known Next Accuracy Work
 
-The remaining `ppu_vbl_nmi` timing ROM needs tighter rendering-enable odd-frame skip timing. Rendering is currently pragmatic rather than cycle-perfect: it is good enough for first framebuffer inspection and focused sprite/background tests, but scrolling during rendering and fetch timing still need refinement.
+The next high-value accuracy target is tighter DMC DMA scheduling, especially one-byte sample edge cases and OAM/DMC overlap timing exposed by `sprdma_and_dmc_dma`. Rendering is currently pragmatic rather than cycle-perfect: it is good enough for first framebuffer inspection and focused sprite/background tests, but scrolling during rendering and fetch timing still need refinement.
 
 The staged implementation plan is in `docs/implementation-plan.md`.

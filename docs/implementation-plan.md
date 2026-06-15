@@ -124,7 +124,7 @@ First tests:
 
 - `blargg_ppu_tests_2005.09.15b/*.nes`
 - `ppu_read_buffer`
-- `ppu_vbl_nmi`: singles `01` through `09` pass; `10-even_odd_timing` remains.
+- `ppu_vbl_nmi`: all ROM singles `01` through `10` pass.
 - `vbl_nmi_timing`: all ROMs pass through the `$00F8` result runner.
 - `sprite_hit_tests_2005.10.05`: all ROMs pass through the `$00F8` result runner.
 - `sprite_overflow_tests`: all ROMs pass through the `$00F8` result runner.
@@ -148,7 +148,7 @@ First tests:
 - `apu_test/rom_singles/*.nes`
 - `apu_reset/*.nes`
 - `dmc_tests/*.nes`
-- `sprdma_and_dmc_dma`
+- `sprdma_and_dmc_dma`: runs to completion but still needs tighter DMC DMA edge timing to match the reference cycle table.
 - `dmc_dma_during_read4`
 
 Deliverable: CPU-visible APU tests pass, and audio playback is good enough for common NROM games.
