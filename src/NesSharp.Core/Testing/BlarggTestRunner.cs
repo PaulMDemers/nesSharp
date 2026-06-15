@@ -30,7 +30,7 @@ public static class BlarggTestRunner
         {
             if (HasSignature(machine))
             {
-                var status = machine.CpuBus.Read(StatusAddress);
+                var status = machine.CpuBus.ReadRaw(StatusAddress);
                 if (status <= 0x7F)
                 {
                     return new BlarggTestResult(
@@ -91,9 +91,9 @@ public static class BlarggTestRunner
 
     private static bool HasSignature(NesMachine machine)
     {
-        return machine.CpuBus.Read(SignatureAddress) == 0xDE &&
-            machine.CpuBus.Read(SignatureAddress + 1) == 0xB0 &&
-            machine.CpuBus.Read(SignatureAddress + 2) == 0x61;
+        return machine.CpuBus.ReadRaw(SignatureAddress) == 0xDE &&
+            machine.CpuBus.ReadRaw(SignatureAddress + 1) == 0xB0 &&
+            machine.CpuBus.ReadRaw(SignatureAddress + 2) == 0x61;
     }
 
     private static bool IsAtSelfJumpLoop(NesMachine machine)
@@ -108,7 +108,7 @@ public static class BlarggTestRunner
         var builder = new StringBuilder();
         for (var i = 0; i < MaxTextLength; i++)
         {
-            var value = machine.CpuBus.Read((ushort)(TextAddress + i));
+            var value = machine.CpuBus.ReadRaw((ushort)(TextAddress + i));
             if (value == 0)
             {
                 break;
