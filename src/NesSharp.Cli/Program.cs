@@ -20,6 +20,7 @@ try
         "trace" => TraceRom(args),
         "nestest" => RunNestestDiff(args),
         "test-rom" => RunTestRom(args),
+        "shell-test-rom" => RunShellTestRom(args),
         "render-frame" => RenderFrame(args),
         _ => UnknownCommand(args[0])
     };
@@ -74,6 +75,8 @@ static void PrintUsage()
     Console.WriteLine("                   Compare CPU execution against Kevin Horton's nestest log.");
     Console.WriteLine("  test-rom <rom.nes> [--max-instructions 50000000]");
     Console.WriteLine("                   Run a blargg-style ROM and report $6000 output.");
+    Console.WriteLine("  shell-test-rom <rom.nes> [--max-instructions 50000000]");
+    Console.WriteLine("                   Run a shell-exit ROM and report the exit accumulator.");
     Console.WriteLine("  render-frame <rom.nes> --out frame.ppm [--frames 1] [--max-instructions 50000000]");
     Console.WriteLine("                   Run a ROM and export the latest 256x240 framebuffer as PPM.");
 }
@@ -100,6 +103,25 @@ static int RunTestRom(string[] args)
         Console.WriteLine();
         Console.WriteLine(result.Output.TrimEnd());
     }
+
+    return result.Passed ? 0 : 1;
+}
+
+static int RunShellTestRom(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.Error.WriteLine("Usage: NesSharp.Cli shell-test-rom <rom.nes> [--max-instructions 50000000]");
+        return 1;
+    }
+
+    var maxInstructions = GetLongOption(args, "--max-instructions", 50_000_000);
+    var result = ShellExitTestRunner.Run(NesMachine.LoadFile(args[1]), maxInstructions);
+
+    Console.WriteLine($"Status: {result.Status}");
+    Console.WriteLine($"Result code: {(result.ResultCode is null ? "<none>" : $"${result.ResultCode:X2}")}");
+    Console.WriteLine($"Instructions: {result.InstructionsExecuted}");
+    Console.WriteLine($"CPU cycles: {result.CpuCycles}");
 
     return result.Passed ? 0 : 1;
 }
