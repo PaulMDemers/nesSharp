@@ -15,6 +15,8 @@ public sealed class CpuBus
     private bool nextDmaCycleIsGet = true;
     private bool dmcDmaHaltRetry;
     private int dmcLoadDmaHaltDelayCycles;
+    private bool deferReadyDmcDmaUntilNextWrite;
+    private bool deferDmcDmaUntilWriteResolution;
     private byte openBus;
 
     public CpuBus(Cartridge.Cartridge cartridge)
@@ -62,8 +64,31 @@ public sealed class CpuBus
         ClockCpuAccess();
         var value = ReadRaw(address);
         SetOpenBus(value);
+        if (deferDmcDmaUntilWriteResolution && ApuBus.IsDmcDmaReady)
+        {
+            deferReadyDmcDmaUntilNextWrite = true;
+            dmcDmaHaltRetry = true;
+            deferDmcDmaUntilWriteResolution = false;
+            return value;
+        }
+
+        deferDmcDmaUntilWriteResolution = false;
         RunPendingDmcDma(address);
         return value;
+    }
+
+    public void BeginPotentialDmcDmaWriteOverlap()
+    {
+        deferDmcDmaUntilWriteResolution = true;
+    }
+
+    public void ResolvePotentialDmcDmaWriteOverlap(bool nextWriteCanOverlapDmcDma)
+    {
+        deferDmcDmaUntilWriteResolution = false;
+        if (!nextWriteCanOverlapDmcDma)
+        {
+            deferReadyDmcDmaUntilNextWrite = false;
+        }
     }
 
     public void ClockSyntheticInstructionAccess()
@@ -105,6 +130,7 @@ public sealed class CpuBus
 
         ClockCpuAccess();
         SetOpenBus(value);
+        RunPendingDmcDmaDuringWrite(address);
         WriteRaw(address, value);
         AdvanceDmcDmaHaltDelay();
         TrackDmcDmaHaltRetry();
@@ -226,6 +252,23 @@ public sealed class CpuBus
         ApuBus.CompleteDmcDma(ReadRaw(address));
         dmcDmaHaltRetry = false;
         dmcLoadDmaHaltDelayCycles = 0;
+    }
+
+    private void RunPendingDmcDmaDuringWrite(ushort writeAddress)
+    {
+        if (!deferReadyDmcDmaUntilNextWrite || !ApuBus.IsDmcDmaReady || writeAddress != 0x4014)
+        {
+            deferReadyDmcDmaUntilNextWrite = false;
+            return;
+        }
+
+        var address = ApuBus.PendingDmcDmaAddress;
+        ClockCpuAccess(instructionAccess: false);
+        ClockCpuAccess(instructionAccess: false);
+        ApuBus.CompleteDmcDma(ReadRaw(address));
+        dmcDmaHaltRetry = false;
+        dmcLoadDmaHaltDelayCycles = 0;
+        deferReadyDmcDmaUntilNextWrite = false;
     }
 
     private void TrackDmcDmaHaltRetry()

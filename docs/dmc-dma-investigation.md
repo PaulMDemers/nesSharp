@@ -136,7 +136,7 @@ row actual exp diff oam oam-dmc load-dma fine-runs fine-defers
 - Reducing `$4015` repeated side-effect reads by one had no effect on either ROM.
 - A synthetic OAM second-to-last-put edge test was too broad and worsened `_512`, so it was not kept.
 - Moving `Dmc.ClockDmaDelay()` after `ClockChannelTimers()` had the same mixed pattern as immediate reload readiness and was reverted.
-- After the phase checkpoint, a final-read-before-`STA $4014` approximation for the test ROM's write-overlap case improved normal row `05` from `529` to `527`, but worsened row `09` from `527` to `528` and left `_512` unchanged, so it was reverted.
+- After the phase checkpoint, a shortcut that completed the DMC DMA on the final operand read before `STA $4014` was rejected because it modeled the wrong cycle. The landed version instead defers the ready DMC DMA to the exact `$4014` write cycle.
 
 ## Landed phase checkpoint
 
@@ -199,4 +199,27 @@ test: lda #$07
       rts
 ```
 
-Its `dma_timing.inc` header says the test is interested in the case where a memory write occurs during a DMC DMA access, making that DMC DMA take 3 clocks instead of the usual 4. A future implementation probably needs an explicit multi-cycle DMC DMA state machine rather than the current all-at-once `RunPendingDmcDma` shortcut, because the shortcut consumes the DMC DMA on the preceding instruction/operand read and cannot accurately overlap the later CPU write.
+Its `dma_timing.inc` header says the test is interested in the case where a memory write occurs during a DMC DMA access, making that DMC DMA take 3 clocks instead of the usual 4. The emulator now carries one narrow write-overlap case: an already-ready DMC DMA seen on the final operand read before an exact absolute write to `$4014` is deferred into the `$4014` write and completed with the shorter write-overlap path.
+
+Normal ROM after the exact `$4014` write-overlap checkpoint:
+
+```text
+00 527
+01 528
+02 527
+03 529
+04 527
+05 527
+06 527
+07 527
+08 527
+09 528
+0A 527
+0B 527
+0C 527
+0D 527
+0E 527
+0F 527
+```
+
+`_512` is unchanged from the phase checkpoint. The exact deferral fires once in the normal ROM and does not fire in `_512`. This is still not the complete model; a future implementation probably needs an explicit multi-cycle DMC DMA state machine rather than the current mostly all-at-once shortcut, because other write-overlap and alignment cases still cannot be represented cleanly.

@@ -333,10 +333,10 @@ public sealed class Cpu6502
             case 0x89: ReadByte(); return 2;
             case 0x8A: A = X; SetZeroNegative(A); return 2;
             case 0x8B: A = (byte)((A | 0xEE) & X & ReadByte()); SetZeroNegative(A); return 2;
-            case 0x8C: Write(Absolute(), Y); return 4;
-            case 0x8D: Write(Absolute(), A); return 4;
-            case 0x8E: Write(Absolute(), X); return 4;
-            case 0x8F: Sax(Absolute()); return 4;
+            case 0x8C: Write(AbsoluteBeforeWrite(markDmcWriteCollision: true), Y); return 4;
+            case 0x8D: Write(AbsoluteBeforeWrite(markDmcWriteCollision: true), A); return 4;
+            case 0x8E: Write(AbsoluteBeforeWrite(markDmcWriteCollision: true), X); return 4;
+            case 0x8F: Sax(AbsoluteBeforeWrite(markDmcWriteCollision: true)); return 4;
             case 0x90: return Branch(!GetFlag(CarryFlag));
             case 0x91: StoreIndirectIndexed(A); return 6;
             case 0x93:
@@ -500,6 +500,24 @@ public sealed class Cpu6502
     private void Write(ushort address, byte value) => bus.Write(address, value);
 
     private ushort Absolute() => ReadWord();
+
+    private ushort AbsoluteBeforeWrite(bool markDmcWriteCollision = false)
+    {
+        var low = ReadByte();
+        if (markDmcWriteCollision && low == 0x14)
+        {
+            bus.BeginPotentialDmcDmaWriteOverlap();
+        }
+
+        var high = ReadByte();
+        var address = (ushort)(low | (high << 8));
+        if (markDmcWriteCollision && low == 0x14)
+        {
+            bus.ResolvePotentialDmcDmaWriteOverlap(address == 0x4014);
+        }
+
+        return address;
+    }
 
     private (ushort Address, int PageCrossed) AbsoluteX()
     {
