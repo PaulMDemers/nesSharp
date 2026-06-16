@@ -136,6 +136,7 @@ row actual exp diff oam oam-dmc load-dma fine-runs fine-defers
 - Reducing `$4015` repeated side-effect reads by one had no effect on either ROM.
 - A synthetic OAM second-to-last-put edge test was too broad and worsened `_512`, so it was not kept.
 - Moving `Dmc.ClockDmaDelay()` after `ClockChannelTimers()` had the same mixed pattern as immediate reload readiness and was reverted.
+- After the phase checkpoint, a final-read-before-`STA $4014` approximation for the test ROM's write-overlap case improved normal row `05` from `529` to `527`, but worsened row `09` from `527` to `528` and left `_512` unchanged, so it was reverted.
 
 ## Landed phase checkpoint
 
@@ -188,3 +189,14 @@ Temporary tracing of the raw phase experiment showed one controller conflict sti
 ## Next model to try
 
 The remaining sprdma drift is now concentrated after the normal ROM's first three rows and in the `_512` early rows. Broad one-byte implicit-stop modeling was tested and moved the row table away from the reference, so it should not be retried without a narrower state-level trigger. The next useful probe is around reload DMA timing during the `end_dmc_timer` fine-sync loop, especially why the normal ROM settles at `527` instead of alternating down to `525/526`.
+
+The mirrored source for `sprdma_and_dmc_dma.s` in koute's `pinky` repository identifies the tiny measured routine as:
+
+```asm
+test: lda #$07
+      sta $4014
+      sta $100
+      rts
+```
+
+Its `dma_timing.inc` header says the test is interested in the case where a memory write occurs during a DMC DMA access, making that DMC DMA take 3 clocks instead of the usual 4. A future implementation probably needs an explicit multi-cycle DMC DMA state machine rather than the current all-at-once `RunPendingDmcDma` shortcut, because the shortcut consumes the DMC DMA on the preceding instruction/operand read and cannot accurately overlap the later CPU write.
