@@ -137,6 +137,33 @@ row actual exp diff oam oam-dmc load-dma fine-runs fine-defers
 - A synthetic OAM second-to-last-put edge test was too broad and worsened `_512`, so it was not kept.
 - Moving `Dmc.ClockDmaDelay()` after `ClockChannelTimers()` had the same mixed pattern as immediate reload readiness and was reverted.
 
+## Later phase experiment
+
+An experiment advanced the DMA get/put phase during `NesMachine.StepInstruction()`'s remaining non-bus CPU cycles, without making those cycles DMC halt points. This improved the normal ROM's first rows, but regressed `dmc_dma_during_read4/dma_4016_read.nes`.
+
+Normal ROM with this phase advance:
+
+```text
+00 527
+01 528
+02 527
+03 529
+04 527
+05 529
+06 527
+07 527
+08 527
+09 527
+0A 527
+0B 527
+0C 527
+0D 527
+0E 527
+0F 527
+```
+
+The focused DMA/APU slice then failed only `dma_4016_read.nes`. Temporary tracing showed one controller conflict still occurred, so the regression is likely that the conflict landed on the wrong one of the five synchronized reads, not that the bus consumed the wrong number of controller bits. Shortening the integrated DMC load halt delay made `dma_4016_read.nes` pass in one probe but worsened both `sprdma` tables, so the phase fix needs a more precise load scheduling model before it can land.
+
 ## Next model to try
 
-The remaining behavior likely needs explicit DMC stop-bug modeling for non-looping one-byte samples, especially implicit-stop aborted/unexpected reload DMA around the output cycle that empties the sample buffer. NESdev documents these bugs as specific to starting a one-byte sample while the sample buffer is empty shortly before a reload DMA would schedule, which matches the DMC timer synchronization pattern used by this ROM.
+The remaining behavior likely needs an explicit CPU-cycle DMA phase model plus more precise DMC load scheduling. Broad one-byte implicit-stop modeling was tested and moved the row table away from the reference, so it should not be retried without a narrower state-level trigger.
