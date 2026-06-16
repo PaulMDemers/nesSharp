@@ -55,9 +55,41 @@ public sealed class SprDmaDmcDmaRomTests
             FormatFailure(result, rows, ExpectedNormal));
     }
 
+    [Fact]
+    public void SprDmaAndDmcDmaReportsCurrentTimingWhenEnabled()
+    {
+        if (Environment.GetEnvironmentVariable("NESSHARP_RUN_SPRDMA") != "1")
+        {
+            return;
+        }
+
+        var result = RunRom("sprdma_and_dmc_dma.nes");
+        var rows = ParseTimingRows(result.Output);
+
+        Assert.True(
+            result.Passed,
+            FormatFailure(result, rows, ExpectedNormal));
+    }
+
     [Fact(Skip = "sprdma_and_dmc_dma_512 currently completes but does not match the reference cycle table.")]
     public void SprDmaAndDmcDma512MatchesReferenceTiming()
     {
+        var result = RunRom("sprdma_and_dmc_dma_512.nes");
+        var rows = ParseTimingRows(result.Output);
+
+        Assert.True(
+            result.Passed,
+            FormatFailure(result, rows, Expected512));
+    }
+
+    [Fact]
+    public void SprDmaAndDmcDma512ReportsCurrentTimingWhenEnabled()
+    {
+        if (Environment.GetEnvironmentVariable("NESSHARP_RUN_SPRDMA") != "1")
+        {
+            return;
+        }
+
         var result = RunRom("sprdma_and_dmc_dma_512.nes");
         var rows = ParseTimingRows(result.Output);
 
