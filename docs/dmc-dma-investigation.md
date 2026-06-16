@@ -137,11 +137,11 @@ row actual exp diff oam oam-dmc load-dma fine-runs fine-defers
 - A synthetic OAM second-to-last-put edge test was too broad and worsened `_512`, so it was not kept.
 - Moving `Dmc.ClockDmaDelay()` after `ClockChannelTimers()` had the same mixed pattern as immediate reload readiness and was reverted.
 
-## Later phase experiment
+## Landed phase checkpoint
 
-An experiment advanced the DMA get/put phase during `NesMachine.StepInstruction()`'s remaining non-bus CPU cycles, without making those cycles DMC halt points. This improved the normal ROM's first rows, but regressed `dmc_dma_during_read4/dma_4016_read.nes`.
+The emulator now advances the DMA get/put phase during `NesMachine.StepInstruction()`'s remaining non-bus CPU cycles, without making those cycles DMC halt points. This improved the normal ROM's first rows. The `dmc_dma_during_read4/dma_4016_read.nes` regression from the raw phase experiment was fixed by shortening only the initial DMC load halt delay for rate-0 IRQ-enabled DMC starts; the default rate-0 load path still waits for the second following APU cycle.
 
-Normal ROM with this phase advance:
+Normal ROM after the phase checkpoint:
 
 ```text
 00 527
@@ -162,8 +162,29 @@ Normal ROM with this phase advance:
 0F 527
 ```
 
-The focused DMA/APU slice then failed only `dma_4016_read.nes`. Temporary tracing showed one controller conflict still occurred, so the regression is likely that the conflict landed on the wrong one of the five synchronized reads, not that the bus consumed the wrong number of controller bits. Shortening the integrated DMC load halt delay made `dma_4016_read.nes` pass in one probe but worsened both `sprdma` tables, so the phase fix needs a more precise load scheduling model before it can land.
+`_512` ROM after the phase checkpoint:
+
+```text
+00 527
+01 528
+02 527
+03 527
+04 528
+05 528
+06 527
+07 527
+08 528
+09 529
+0A 527
+0B 528
+0C 527
+0D 527
+0E 527
+0F 528
+```
+
+Temporary tracing of the raw phase experiment showed one controller conflict still occurred in `dma_4016_read.nes`, but it landed on the fourth synchronized probe instead of the expected third probe. The narrowed rate-0 IRQ load delay moves the synchronization ROM back into alignment while keeping the existing default DMC load-delay unit behavior.
 
 ## Next model to try
 
-The remaining behavior likely needs an explicit CPU-cycle DMA phase model plus more precise DMC load scheduling. Broad one-byte implicit-stop modeling was tested and moved the row table away from the reference, so it should not be retried without a narrower state-level trigger.
+The remaining sprdma drift is now concentrated after the normal ROM's first three rows and in the `_512` early rows. Broad one-byte implicit-stop modeling was tested and moved the row table away from the reference, so it should not be retried without a narrower state-level trigger. The next useful probe is around reload DMA timing during the `end_dmc_timer` fine-sync loop, especially why the normal ROM settles at `527` instead of alternating down to `525/526`.

@@ -64,6 +64,7 @@ public sealed class NesMachine
         {
             for (var i = 0; i < remainingCycles; i++)
             {
+                CpuBus.AdvanceDmaPhase();
                 ClockOneCpuCycle(deferNewIrq: true);
             }
         }

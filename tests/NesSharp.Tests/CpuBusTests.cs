@@ -290,6 +290,20 @@ public sealed class CpuBusTests
     }
 
     [Fact]
+    public void NonBusCpuCycleAdvancesDmaPhaseWithoutCountingMemoryAccess()
+    {
+        var bus = new CpuBus(CreateCartridgeWithResetVector());
+
+        bus.BeginCpuInstruction();
+        bus.AdvanceDmaPhase();
+        bus.Write(0x4014, 0x02);
+        bus.EndCpuInstruction();
+
+        Assert.Equal(516, bus.CpuAccessCycles);
+        Assert.Equal(1, bus.InstructionAccessCycles);
+    }
+
+    [Fact]
     public void OamDmaServicesPendingDmcDmaDuringTransfer()
     {
         var bus = new CpuBus(CreateCartridgeWithResetVector());

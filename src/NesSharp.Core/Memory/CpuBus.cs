@@ -71,6 +71,11 @@ public sealed class CpuBus
         ClockCpuAccess(advanceDmaPhase: false);
     }
 
+    public void AdvanceDmaPhase()
+    {
+        nextDmaCycleIsGet = !nextDmaCycleIsGet;
+    }
+
     public byte ReadRaw(ushort address)
     {
         return address switch
@@ -164,7 +169,7 @@ public sealed class CpuBus
         cpuCycleElapsed?.Invoke();
         if (advanceDmaPhase)
         {
-            nextDmaCycleIsGet = !nextDmaCycleIsGet;
+            AdvanceDmaPhase();
         }
     }
 
@@ -246,7 +251,7 @@ public sealed class CpuBus
             ApuBus.IsDmcDmaPending &&
             ApuBus.PendingDmcDmaKind == DmcDmaKind.Load)
         {
-            dmcLoadDmaHaltDelayCycles = 2;
+            dmcLoadDmaHaltDelayCycles = ApuBus.Dmc.RateIndex == 0x00 && ApuBus.Dmc.IrqEnabled ? 1 : 2;
         }
     }
 
