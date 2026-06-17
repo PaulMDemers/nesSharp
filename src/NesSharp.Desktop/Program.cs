@@ -1,4 +1,11 @@
-using NesSharp.Desktop;
+namespace NesSharp.Desktop;
 
-ApplicationConfiguration.Initialize();
-Application.Run(new EmulatorForm(args));
+internal static class Program
+{
+    [STAThread]
+    private static void Main(string[] args)
+    {
+        ApplicationConfiguration.Initialize();
+        Application.Run(new EmulatorForm(args));
+    }
+}
