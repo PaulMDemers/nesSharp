@@ -89,6 +89,12 @@ internal sealed class EmulatorForm : Form
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
         var keyCode = keyData & Keys.KeyCode;
+        if (keyCode == Keys.Space && (keyData & Keys.Modifiers) == Keys.None && pauseMenuItem.Enabled)
+        {
+            pauseMenuItem.Checked = !pauseMenuItem.Checked;
+            return true;
+        }
+
         if (MapKey(keyCode) is not null)
         {
             SetControllerButton(keyCode, pressed: true);
@@ -125,7 +131,7 @@ internal sealed class EmulatorForm : Form
         resetMenuItem.Click += (_, _) => ResetMachine();
         powerCycleMenuItem.ShortcutKeys = Keys.Control | Keys.Shift | Keys.R;
         powerCycleMenuItem.Click += (_, _) => PowerCycleMachine();
-        pauseMenuItem.ShortcutKeys = Keys.Space;
+        pauseMenuItem.ShortcutKeyDisplayString = "Space";
         pauseMenuItem.CheckedChanged += (_, _) =>
         {
             if (pauseMenuItem.Checked)
