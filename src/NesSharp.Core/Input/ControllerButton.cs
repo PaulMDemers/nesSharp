@@ -3,6 +3,7 @@ namespace NesSharp.Core.Input;
 [Flags]
 public enum ControllerButton : byte
 {
+    None = 0,
     A = 1 << 0,
     B = 1 << 1,
     Select = 1 << 2,
@@ -12,4 +13,3 @@ public enum ControllerButton : byte
     Left = 1 << 6,
     Right = 1 << 7
 }
-

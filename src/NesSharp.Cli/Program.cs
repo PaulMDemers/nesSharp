@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using NesSharp.Core.Cartridge;
 using NesSharp.Core.Cpu;
+using NesSharp.Core.Input;
 using NesSharp.Core.Memory;
 using NesSharp.Core.Runtime;
 using NesSharp.Core.Testing;
@@ -27,7 +28,7 @@ try
         _ => UnknownCommand(args[0])
     };
 }
-catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidRomException or NotSupportedException)
+catch (Exception ex) when (ex is FormatException or IOException or UnauthorizedAccessException or InvalidDataException or InvalidRomException or NotSupportedException)
 {
     Console.Error.WriteLine(ex.Message);
     return 1;
@@ -79,10 +80,10 @@ static void PrintUsage()
     Console.WriteLine("                   Run a blargg-style ROM and report $6000 output.");
     Console.WriteLine("  shell-test-rom <rom.nes> [--max-instructions 50000000]");
     Console.WriteLine("                   Run a shell-exit ROM and report the exit accumulator.");
-    Console.WriteLine("  render-frame <rom.nes> --out frame.ppm [--frames 1] [--max-instructions 50000000]");
-    Console.WriteLine("                   Run a ROM and export the latest 256x240 framebuffer as PPM.");
-    Console.WriteLine("  compare-frame <rom.nes> --reference frame.ppm [--frames 1] [--out actual.ppm]");
-    Console.WriteLine("                   Compare nesSharp RGB output against a 256x240 binary PPM reference.");
+    Console.WriteLine("  render-frame <rom.nes> --out frame.ppm|frame.bmp [--frames 1] [--input \"60-90:Start\"]");
+    Console.WriteLine("                   Run a ROM and export the latest 256x240 framebuffer.");
+    Console.WriteLine("  compare-frame <rom.nes> --reference frame.ppm|frame.bmp [--frames 1] [--input \"60-90:Start\"]");
+    Console.WriteLine("                   Compare nesSharp RGB output against a 256x240 reference frame.");
 }
 
 static int RunTestRom(string[] args)
@@ -134,7 +135,7 @@ static int RenderFrame(string[] args)
 {
     if (args.Length < 2)
     {
-        Console.Error.WriteLine("Usage: NesSharp.Cli render-frame <rom.nes> --out frame.ppm [--frames 1] [--max-instructions 50000000]");
+        Console.Error.WriteLine("Usage: NesSharp.Cli render-frame <rom.nes> --out frame.ppm|frame.bmp [--frames 1] [--input \"60-90:Start\"] [--max-instructions 50000000]");
         return 1;
     }
 
@@ -152,7 +153,7 @@ static int RenderFrame(string[] args)
         return 1;
     }
 
-    PpmWriter.Write(outputPath, result.Framebuffer);
+    FrameImage.Write(outputPath, result.Framebuffer);
     Console.WriteLine($"Wrote {Path.GetFullPath(outputPath)} after {result.Instructions} instructions, frame {result.Frame}.");
     return 0;
 }
@@ -161,7 +162,7 @@ static int CompareFrame(string[] args)
 {
     if (args.Length < 2)
     {
-        Console.Error.WriteLine("Usage: NesSharp.Cli compare-frame <rom.nes> --reference frame.ppm [--frames 1] [--out actual.ppm] [--max-instructions 50000000]");
+        Console.Error.WriteLine("Usage: NesSharp.Cli compare-frame <rom.nes> --reference frame.ppm|frame.bmp [--frames 1] [--out actual.ppm|actual.bmp] [--input \"60-90:Start\"] [--max-instructions 50000000]");
         return 1;
     }
 
@@ -179,8 +180,8 @@ static int CompareFrame(string[] args)
         return 1;
     }
 
-    var actualRgb = PpmWriter.ToRgb(result.Framebuffer);
-    var expectedRgb = PpmReader.ReadRgb(referencePath);
+    var actualRgb = FrameImage.ToRgb(result.Framebuffer);
+    var expectedRgb = FrameImage.ReadRgb(referencePath);
     if (expectedRgb.Length != actualRgb.Length)
     {
         Console.Error.WriteLine($"Reference RGB payload has {expectedRgb.Length} bytes; expected {actualRgb.Length}.");
@@ -190,7 +191,7 @@ static int CompareFrame(string[] args)
     var outputPath = GetOption(args, "--out");
     if (!string.IsNullOrWhiteSpace(outputPath))
     {
-        PpmWriter.Write(outputPath, result.Framebuffer);
+        FrameImage.Write(outputPath, result.Framebuffer);
         Console.WriteLine($"Wrote actual frame: {Path.GetFullPath(outputPath)}");
     }
 
@@ -210,6 +211,7 @@ static RenderFrameResult RenderFrameBuffer(string romPath, string[] args)
 {
     var frames = GetIntOption(args, "--frames", 1);
     var maxInstructions = GetLongOption(args, "--max-instructions", 50_000_000);
+    var inputScript = FrameInputScript.Parse(GetOption(args, "--input"));
     var machine = NesMachine.LoadFile(romPath);
     machine.Reset();
     var targetFrame = machine.PpuBus.Frame + (ulong)Math.Max(1, frames);
@@ -217,6 +219,7 @@ static RenderFrameResult RenderFrameBuffer(string romPath, string[] args)
     long instructions = 0;
     while (machine.PpuBus.Frame < targetFrame && instructions < maxInstructions)
     {
+        machine.Controller1.State = inputScript.GetState(machine.PpuBus.Frame);
         machine.StepInstruction();
         instructions++;
     }
@@ -400,23 +403,36 @@ internal sealed partial record NestestLogState(
     private static partial Regex NestestLineRegex();
 }
 
-internal static class PpmWriter
+internal static class FrameImage
 {
+    private const int Width = 256;
+    private const int Height = 240;
+
     public static void Write(string path, ReadOnlySpan<byte> framebuffer)
     {
-        var directory = Path.GetDirectoryName(Path.GetFullPath(path));
-        if (!string.IsNullOrEmpty(directory))
+        var extension = Path.GetExtension(path).ToLowerInvariant();
+        switch (extension)
         {
-            Directory.CreateDirectory(directory);
+            case ".ppm":
+                WritePpm(path, framebuffer);
+                break;
+            case ".bmp":
+                WriteBmp(path, framebuffer);
+                break;
+            default:
+                throw new InvalidDataException("Frame output must use .ppm or .bmp.");
         }
+    }
 
-        using var stream = File.Create(path);
-        using var writer = new StreamWriter(stream, leaveOpen: true);
-        writer.Write("P6\n256 240\n255\n");
-        writer.Flush();
-
-        var rgbFrame = ToRgb(framebuffer);
-        stream.Write(rgbFrame);
+    public static byte[] ReadRgb(string path)
+    {
+        var extension = Path.GetExtension(path).ToLowerInvariant();
+        return extension switch
+        {
+            ".ppm" => ReadPpmRgb(path),
+            ".bmp" => ReadBmpRgb(path),
+            _ => throw new InvalidDataException("Reference frame must use .ppm or .bmp.")
+        };
     }
 
     public static byte[] ToRgb(ReadOnlySpan<byte> framebuffer)
@@ -434,15 +450,20 @@ internal static class PpmWriter
 
         return rgbFrame;
     }
-}
 
-internal static class PpmReader
-{
-    private const int ExpectedWidth = 256;
-    private const int ExpectedHeight = 240;
-    private const int ExpectedMaxValue = 255;
+    private static void WritePpm(string path, ReadOnlySpan<byte> framebuffer)
+    {
+        CreateParentDirectory(path);
+        using var stream = File.Create(path);
+        using var writer = new StreamWriter(stream, leaveOpen: true);
+        writer.Write($"P6\n{Width} {Height}\n255\n");
+        writer.Flush();
 
-    public static byte[] ReadRgb(string path)
+        var rgbFrame = ToRgb(framebuffer);
+        stream.Write(rgbFrame);
+    }
+
+    private static byte[] ReadPpmRgb(string path)
     {
         var data = File.ReadAllBytes(path);
         var offset = 0;
@@ -450,13 +471,13 @@ internal static class PpmReader
         var width = int.Parse(ReadToken(data, ref offset), CultureInfo.InvariantCulture);
         var height = int.Parse(ReadToken(data, ref offset), CultureInfo.InvariantCulture);
         var maxValue = int.Parse(ReadToken(data, ref offset), CultureInfo.InvariantCulture);
-        if (magic != "P6" || width != ExpectedWidth || height != ExpectedHeight || maxValue != ExpectedMaxValue)
+        if (magic != "P6" || width != Width || height != Height || maxValue != 255)
         {
-            throw new InvalidDataException("Reference frame must be a 256x240 binary PPM (P6) with max value 255.");
+            throw new InvalidDataException("Reference PPM frame must be a 256x240 binary PPM (P6) with max value 255.");
         }
 
         SkipSingleHeaderDelimiter(data, ref offset);
-        var expectedLength = ExpectedWidth * ExpectedHeight * 3;
+        var expectedLength = Width * Height * 3;
         if (data.Length - offset < expectedLength)
         {
             throw new InvalidDataException("Reference frame ended before the complete RGB payload.");
@@ -465,6 +486,112 @@ internal static class PpmReader
         var rgb = new byte[expectedLength];
         data.AsSpan(offset, expectedLength).CopyTo(rgb);
         return rgb;
+    }
+
+    private static void WriteBmp(string path, ReadOnlySpan<byte> framebuffer)
+    {
+        CreateParentDirectory(path);
+        var rgbFrame = ToRgb(framebuffer);
+        var rowStride = GetBmpRowStride(Width);
+        var pixelDataSize = rowStride * Height;
+        var fileSize = 14 + 40 + pixelDataSize;
+
+        using var stream = File.Create(path);
+        using var writer = new BinaryWriter(stream);
+        writer.Write((byte)'B');
+        writer.Write((byte)'M');
+        writer.Write(fileSize);
+        writer.Write(0);
+        writer.Write(14 + 40);
+        writer.Write(40);
+        writer.Write(Width);
+        writer.Write(Height);
+        writer.Write((short)1);
+        writer.Write((short)24);
+        writer.Write(0);
+        writer.Write(pixelDataSize);
+        writer.Write(2835);
+        writer.Write(2835);
+        writer.Write(0);
+        writer.Write(0);
+
+        Span<byte> row = stackalloc byte[rowStride];
+        for (var y = Height - 1; y >= 0; y--)
+        {
+            row.Clear();
+            for (var x = 0; x < Width; x++)
+            {
+                var source = (y * Width + x) * 3;
+                var target = x * 3;
+                row[target] = rgbFrame[source + 2];
+                row[target + 1] = rgbFrame[source + 1];
+                row[target + 2] = rgbFrame[source];
+            }
+
+            stream.Write(row);
+        }
+    }
+
+    private static byte[] ReadBmpRgb(string path)
+    {
+        var data = File.ReadAllBytes(path);
+        if (data.Length < 54 || data[0] != 'B' || data[1] != 'M')
+        {
+            throw new InvalidDataException("Reference BMP frame must be an uncompressed 24-bit BMP.");
+        }
+
+        var pixelOffset = BitConverter.ToInt32(data, 10);
+        var dibHeaderSize = BitConverter.ToInt32(data, 14);
+        var width = BitConverter.ToInt32(data, 18);
+        var signedHeight = BitConverter.ToInt32(data, 22);
+        var planes = BitConverter.ToInt16(data, 26);
+        var bitsPerPixel = BitConverter.ToInt16(data, 28);
+        var compression = BitConverter.ToInt32(data, 30);
+        if (dibHeaderSize < 40 ||
+            width != Width ||
+            Math.Abs(signedHeight) != Height ||
+            planes != 1 ||
+            bitsPerPixel != 24 ||
+            compression != 0)
+        {
+            throw new InvalidDataException("Reference BMP frame must be 256x240, uncompressed, and 24-bit.");
+        }
+
+        var rowStride = GetBmpRowStride(Width);
+        var requiredLength = pixelOffset + rowStride * Height;
+        if (pixelOffset < 0 || requiredLength > data.Length)
+        {
+            throw new InvalidDataException("Reference BMP frame ended before the complete RGB payload.");
+        }
+
+        var topDown = signedHeight < 0;
+        var rgb = new byte[Width * Height * 3];
+        for (var y = 0; y < Height; y++)
+        {
+            var sourceY = topDown ? y : Height - 1 - y;
+            var sourceRow = pixelOffset + sourceY * rowStride;
+            for (var x = 0; x < Width; x++)
+            {
+                var source = sourceRow + x * 3;
+                var target = (y * Width + x) * 3;
+                rgb[target] = data[source + 2];
+                rgb[target + 1] = data[source + 1];
+                rgb[target + 2] = data[source];
+            }
+        }
+
+        return rgb;
+    }
+
+    private static int GetBmpRowStride(int width) => ((width * 3) + 3) & ~3;
+
+    private static void CreateParentDirectory(string path)
+    {
+        var directory = Path.GetDirectoryName(Path.GetFullPath(path));
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
     }
 
     private static string ReadToken(byte[] data, ref int offset)
@@ -558,6 +685,97 @@ internal readonly record struct RenderFrameResult(
     ulong TargetFrame,
     long Instructions,
     bool Completed);
+
+internal sealed class FrameInputScript
+{
+    private static readonly FrameInputScript Empty = new([]);
+
+    private readonly FrameInputRange[] ranges;
+
+    private FrameInputScript(FrameInputRange[] ranges)
+    {
+        this.ranges = ranges;
+    }
+
+    public static FrameInputScript Parse(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return Empty;
+        }
+
+        var parts = value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var ranges = new FrameInputRange[parts.Length];
+        for (var i = 0; i < parts.Length; i++)
+        {
+            ranges[i] = ParseRange(parts[i]);
+        }
+
+        return new FrameInputScript(ranges);
+    }
+
+    public ControllerButton GetState(ulong frame)
+    {
+        var state = ControllerButton.None;
+        foreach (var range in ranges)
+        {
+            if (range.Contains(frame))
+            {
+                state |= range.State;
+            }
+        }
+
+        return state;
+    }
+
+    private static FrameInputRange ParseRange(string value)
+    {
+        var pieces = value.Split(':', 2, StringSplitOptions.TrimEntries);
+        if (pieces.Length != 2)
+        {
+            throw new FormatException("Input ranges must use the form start-end:Button+Button.");
+        }
+
+        var frameRange = pieces[0].Split('-', 2, StringSplitOptions.TrimEntries);
+        var start = ParseFrame(frameRange[0]);
+        var end = frameRange.Length == 1 ? start : ParseFrame(frameRange[1]);
+        if (end < start)
+        {
+            throw new FormatException("Input range end frame cannot be before the start frame.");
+        }
+
+        return new FrameInputRange(start, end, ParseButtons(pieces[1]));
+    }
+
+    private static ulong ParseFrame(string value)
+    {
+        return ulong.Parse(value, CultureInfo.InvariantCulture);
+    }
+
+    private static ControllerButton ParseButtons(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) ||
+            value.Equals("None", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("0", StringComparison.OrdinalIgnoreCase))
+        {
+            return ControllerButton.None;
+        }
+
+        var state = ControllerButton.None;
+        var buttons = value.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var button in buttons)
+        {
+            state |= Enum.Parse<ControllerButton>(button, ignoreCase: true);
+        }
+
+        return state;
+    }
+}
+
+internal readonly record struct FrameInputRange(ulong StartFrame, ulong EndFrame, ControllerButton State)
+{
+    public bool Contains(ulong frame) => frame >= StartFrame && frame <= EndFrame;
+}
 
 internal readonly record struct FrameDiffResult(
     int DifferingPixels,
