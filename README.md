@@ -12,11 +12,14 @@ dotnet run --project src\NesSharp.Cli -- nestest test-roms\nes-test-roms\other\n
 dotnet run --project src\NesSharp.Cli -- test-rom test-roms\nes-test-roms\instr_test-v5\rom_singles\01-basics.nes
 dotnet run --project src\NesSharp.Cli -- test-rom test-roms\nes-test-roms\ppu_vbl_nmi\rom_singles\01-vbl_basics.nes
 dotnet run --project src\NesSharp.Cli -- render-frame test-roms\nes-test-roms\ppu_read_buffer\test_ppu_read_buffer.nes --frames 120 --out artifacts\frames\ppu_read_buffer_frame120.ppm
+dotnet run --project src\NesSharp.Cli -- compare-frame roms\USA\Super Mario Bros 3 (U) (PRG 1).nes --frames 120 --reference artifacts\mame\smb3_frame120.ppm --out artifacts\frames\smb3_frame120_nessharp.ppm
 dotnet run --project src\NesSharp.Desktop -- test-roms\nes-test-roms\ppu_read_buffer\test_ppu_read_buffer.nes
 ```
 
 Desktop controller 1 mapping: `Z` = A, `X` = B, `Backspace` = Select, `Enter` = Start, arrow keys = D-pad. Use `Ctrl+R` for reset and `Ctrl+Shift+R` for power cycle.
 Battery-backed saves are loaded from and written to a `.sav` file beside the ROM in the desktop host.
+
+`compare-frame` expects a 256x240 binary PPM (`P6`) reference. MAME snapshots are commonly PNG files; convert those to PPM first, then compare the converted reference against nesSharp's rendered frame.
 
 ## Current Status
 
@@ -42,8 +45,9 @@ Battery-backed saves are loaded from and written to a `.sav` file beside the ROM
 - Advances PPU timing during CPU bus accesses, with raw bus reads preserved for tracing/debug inspection.
 - Models the `$2002` vblank-set suppression window and near-vblank NMI cancellation.
 - Implements CPU-visible PPU VRAM, nametable mirroring, palette mirroring, buffered `$2007` reads, `$2005/$2006` write latch behavior, OAM, phase-aligned OAM DMA cycle timing, and PPU open-bus decay.
-- Implements pragmatic visible-scanline sprite composition, sprite/background priority, sprite flipping, 8x16 sprite tile selection, timed sprite overflow status, diagonal overflow search behavior, and sprite 0 hit detection. All `sprite_hit_tests_2005.10.05` and `sprite_overflow_tests` ROMs currently pass.
+- Implements pragmatic visible-scanline sprite composition, per-scanline sprite OAM/pattern latching, sprite/background priority, sprite flipping, 8x16 sprite tile selection, timed sprite overflow status, diagonal overflow search behavior, and sprite 0 hit detection. All `sprite_hit_tests_2005.10.05` and `sprite_overflow_tests` ROMs currently pass.
 - Maintains a 256x240 palette-index framebuffer and can export it as binary PPM through the CLI.
+- Provides a CLI frame comparator for exact RGB diffs against reference PPM frames, intended for MAME/reference-emulator visual checks.
 - Uses a shared NES RGB palette for frame export and visual regression hashing.
 - Includes a deterministic RGB hash regression for `ppu_read_buffer` frame 120.
 - Implements standard controller strobe/read behavior on `$4016/$4017`.

@@ -20,6 +20,7 @@ public sealed class PpuBus
     private readonly byte[] oam = new byte[256];
     private readonly byte[] framebuffer = new byte[ScreenWidth * ScreenHeight];
     private readonly byte[] registers = new byte[8];
+    private readonly SpriteRenderEntry[] scanlineSprites = new SpriteRenderEntry[8];
     private byte effectiveMask;
     private byte pendingMask;
     private int pendingMaskDelayDots;
@@ -41,6 +42,8 @@ public sealed class PpuBus
     private bool renderBackgroundFromCurrentVramAddress;
     private BackgroundFetchPipeline backgroundFetchPipeline;
     private BackgroundShiftRegister backgroundShiftRegister;
+    private int scanlineSpriteY = -1;
+    private int scanlineSpriteCount;
     private ulong vblankSetTotalDots;
 
     public PpuBus(Cartridge.Cartridge cartridge)
@@ -175,6 +178,8 @@ public sealed class PpuBus
         renderBackgroundFromCurrentVramAddress = false;
         backgroundFetchPipeline = default;
         backgroundShiftRegister = default;
+        scanlineSpriteY = -1;
+        scanlineSpriteCount = 0;
         vblankSetTotalDots = 0;
     }
 
@@ -304,15 +309,29 @@ public sealed class PpuBus
 
     private void RunSpritePatternFetchStep()
     {
-        if (!IsSpriteRenderingEnabled ||
+        if (!IsRenderingEnabled ||
             !IsRenderingScanline ||
             Dot != 257)
         {
             return;
         }
 
-        var spritePatternBase = (registers[0] & 0x08) == 0 ? 0x0000 : 0x1000;
-        cartridge.NotifyPpuAddress((ushort)spritePatternBase);
+        var nextScanline = Scanline == 261 ? 0 : Scanline + 1;
+        if (nextScanline is >= 0 and < ScreenHeight)
+        {
+            LoadSpriteScanline(nextScanline);
+        }
+        else
+        {
+            scanlineSpriteY = nextScanline;
+            scanlineSpriteCount = 0;
+        }
+
+        if (IsSpriteRenderingEnabled)
+        {
+            var spritePatternBase = (registers[0] & 0x08) == 0 ? 0x0000 : 0x1000;
+            cartridge.NotifyPpuAddress((ushort)spritePatternBase);
+        }
     }
 
     private void LoadBackgroundShiftRegister()
@@ -979,78 +998,37 @@ public sealed class PpuBus
 
     private int GetSpriteZeroPixel(int x, int y)
     {
-        var spriteY = oam[0] + 1;
-        var tileIndex = oam[1];
-        var attributes = oam[2];
-        var spriteX = oam[3];
-        var height = (registers[0] & 0x20) == 0 ? 8 : 16;
-        var relativeX = x - spriteX;
-        var relativeY = y - spriteY;
-
-        if (relativeX is < 0 or >= 8 || relativeY < 0 || relativeY >= height)
+        EnsureSpriteScanlineLoaded(y);
+        for (var i = 0; i < scanlineSpriteCount; i++)
         {
-            return 0;
-        }
-
-        if ((attributes & 0x40) != 0)
-        {
-            relativeX = 7 - relativeX;
-        }
-
-        if ((attributes & 0x80) != 0)
-        {
-            relativeY = height - 1 - relativeY;
-        }
-
-        int patternBase;
-        int tile;
-        if (height == 16)
-        {
-            patternBase = (tileIndex & 0x01) * 0x1000;
-            tile = tileIndex & 0xFE;
-            if (relativeY >= 8)
+            if (scanlineSprites[i].SpriteIndex != 0)
             {
-                tile++;
-                relativeY -= 8;
+                continue;
             }
-        }
-        else
-        {
-            patternBase = (registers[0] & 0x08) == 0 ? 0x0000 : 0x1000;
-            tile = tileIndex;
+
+            return GetSpriteEntryColor(scanlineSprites[i], x);
         }
 
-        var patternAddress = (ushort)(patternBase + tile * 16 + relativeY);
-        var low = cartridge.PpuRead(patternAddress);
-        var high = cartridge.PpuRead((ushort)(patternAddress + 8));
-        var bit = 7 - relativeX;
-        return ((low >> bit) & 0x01) | (((high >> bit) & 0x01) << 1);
+        return 0;
     }
 
     private PpuPixel GetSpritePixelWithPalette(int x, int y)
     {
-        if (!IsRenderingEnabled)
+        if (!IsRenderingEnabled || !IsSpriteRenderingEnabled)
         {
             return PpuPixel.Transparent;
         }
 
-        var canRenderSpritePixels = IsSpriteRenderingEnabled && (x >= 8 || ShowSpritesInLeftColumn);
-        var renderSpritesOnScanline = 0;
-        var selectedPixel = PpuPixel.Transparent;
-        for (var spriteIndex = 0; spriteIndex < 64; spriteIndex++)
+        if (x < 8 && !ShowSpritesInLeftColumn)
         {
-            if (!canRenderSpritePixels || !IsSpriteInRenderRange(spriteIndex, y))
-            {
-                continue;
-            }
+            return PpuPixel.Transparent;
+        }
 
-            renderSpritesOnScanline++;
-            if (renderSpritesOnScanline > 8)
-            {
-                continue;
-            }
-
-            var pixel = GetSpritePixel(spriteIndex, x, y);
+        EnsureSpriteScanlineLoaded(y);
+        var selectedPixel = PpuPixel.Transparent;
+        for (var i = 0; i < scanlineSpriteCount; i++)
+        {
+            var pixel = GetSpritePixel(scanlineSprites[i], x);
             if (selectedPixel.Color == 0 && pixel.Color != 0)
             {
                 selectedPixel = pixel;
@@ -1058,6 +1036,35 @@ public sealed class PpuBus
         }
 
         return selectedPixel;
+    }
+
+    private void EnsureSpriteScanlineLoaded(int y)
+    {
+        if (scanlineSpriteY != y)
+        {
+            LoadSpriteScanline(y);
+        }
+    }
+
+    private void LoadSpriteScanline(int y)
+    {
+        scanlineSpriteY = y;
+        scanlineSpriteCount = 0;
+
+        if (!IsSpriteRenderingEnabled || y is < 0 or >= ScreenHeight)
+        {
+            return;
+        }
+
+        for (var spriteIndex = 0; spriteIndex < 64 && scanlineSpriteCount < scanlineSprites.Length; spriteIndex++)
+        {
+            if (!IsSpriteInRenderRange(spriteIndex, y))
+            {
+                continue;
+            }
+
+            scanlineSprites[scanlineSpriteCount++] = CreateSpriteRenderEntry(spriteIndex, y);
+        }
     }
 
     private bool IsSpriteInRenderRange(int spriteIndex, int y)
@@ -1115,7 +1122,7 @@ public sealed class PpuBus
         return y >= spriteY && y < spriteY + height;
     }
 
-    private PpuPixel GetSpritePixel(int spriteIndex, int x, int y)
+    private SpriteRenderEntry CreateSpriteRenderEntry(int spriteIndex, int y)
     {
         var offset = spriteIndex * 4;
         var spriteY = oam[offset] + 1;
@@ -1123,18 +1130,7 @@ public sealed class PpuBus
         var attributes = oam[offset + 2];
         var spriteX = oam[offset + 3];
         var height = (registers[0] & 0x20) == 0 ? 8 : 16;
-        var relativeX = x - spriteX;
         var relativeY = y - spriteY;
-
-        if (relativeX is < 0 or >= 8 || relativeY < 0 || relativeY >= height)
-        {
-            return PpuPixel.Transparent;
-        }
-
-        if ((attributes & 0x40) != 0)
-        {
-            relativeX = 7 - relativeX;
-        }
 
         if ((attributes & 0x80) != 0)
         {
@@ -1160,17 +1156,38 @@ public sealed class PpuBus
         }
 
         var patternAddress = (ushort)(patternBase + tile * 16 + relativeY);
-        var low = cartridge.PpuRead(patternAddress);
-        var high = cartridge.PpuRead((ushort)(patternAddress + 8));
+        var low = cartridge.PpuPeek(patternAddress);
+        var high = cartridge.PpuPeek((ushort)(patternAddress + 8));
+        return new SpriteRenderEntry(spriteIndex, (byte)spriteX, attributes, low, high);
+    }
+
+    private static int GetSpriteEntryColor(SpriteRenderEntry sprite, int x)
+    {
+        var relativeX = x - sprite.X;
+        if (relativeX is < 0 or >= 8)
+        {
+            return 0;
+        }
+
+        if ((sprite.Attributes & 0x40) != 0)
+        {
+            relativeX = 7 - relativeX;
+        }
+
         var bit = 7 - relativeX;
-        var color = ((low >> bit) & 0x01) | (((high >> bit) & 0x01) << 1);
+        return ((sprite.PatternLow >> bit) & 0x01) | (((sprite.PatternHigh >> bit) & 0x01) << 1);
+    }
+
+    private static PpuPixel GetSpritePixel(SpriteRenderEntry sprite, int x)
+    {
+        var color = GetSpriteEntryColor(sprite, x);
         if (color == 0)
         {
             return PpuPixel.Transparent;
         }
 
-        var palette = attributes & 0x03;
-        var priorityBehindBackground = (attributes & 0x20) != 0;
+        var palette = sprite.Attributes & 0x03;
+        var priorityBehindBackground = (sprite.Attributes & 0x20) != 0;
         return new PpuPixel(color, (ushort)(0x3F10 + palette * 4 + color), priorityBehindBackground);
     }
 
@@ -1203,4 +1220,11 @@ public sealed class PpuBus
         ushort AttributeHigh,
         int NextTileShifts,
         bool HasNextTile);
+
+    private readonly record struct SpriteRenderEntry(
+        int SpriteIndex,
+        byte X,
+        byte Attributes,
+        byte PatternLow,
+        byte PatternHigh);
 }

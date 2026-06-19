@@ -151,6 +151,38 @@ public sealed class PpuSpriteRenderingTests
         Assert.Equal(0x20, ppu.ReadRegister(0x2002) & 0x20);
     }
 
+    [Fact]
+    public void SpritePatternBytesAreLatchedBeforeRenderedScanline()
+    {
+        var ppu = CreatePpu();
+        WritePatternRow(ppu, tile: 1, row: 0, low: 0b1000_0000, high: 0);
+        WritePalette(ppu, 0x3F11, 0x24);
+        WriteSprite(ppu, index: 0, y: 8, tile: 1, attributes: 0x00, x: 8);
+        EnableSprites(ppu);
+
+        ClockThroughSpriteFetchForScanline(ppu, y: 8);
+        WritePatternRow(ppu, tile: 1, row: 0, low: 0, high: 0);
+        ClockThroughPixelFromCurrentPosition(ppu, x: 8, y: 8);
+
+        Assert.Equal(0x24, ppu.Framebuffer[8 * ScreenWidth + 8]);
+    }
+
+    [Fact]
+    public void SpriteOamBytesAreLatchedBeforeRenderedScanline()
+    {
+        var ppu = CreatePpu();
+        WritePatternRow(ppu, tile: 1, row: 0, low: 0b1000_0000, high: 0);
+        WritePalette(ppu, 0x3F11, 0x24);
+        WriteSprite(ppu, index: 0, y: 8, tile: 1, attributes: 0x00, x: 8);
+        EnableSprites(ppu);
+
+        ClockThroughSpriteFetchForScanline(ppu, y: 8);
+        WriteSprite(ppu, index: 0, y: 8, tile: 1, attributes: 0x00, x: 80);
+        ClockThroughPixelFromCurrentPosition(ppu, x: 8, y: 8);
+
+        Assert.Equal(0x24, ppu.Framebuffer[8 * ScreenWidth + 8]);
+    }
+
     private static PpuBus CreatePpu() => new(CreateCartridge());
 
     private static void EnableSprites(PpuBus ppu)
@@ -166,6 +198,18 @@ public sealed class PpuSpriteRenderingTests
     private static void ClockThroughPixel(PpuBus ppu, int x, int y)
     {
         ppu.Clock(y * 341 + x + 1);
+    }
+
+    private static void ClockThroughSpriteFetchForScanline(PpuBus ppu, int y)
+    {
+        ppu.Clock((y - 1) * 341 + 257);
+    }
+
+    private static void ClockThroughPixelFromCurrentPosition(PpuBus ppu, int x, int y)
+    {
+        var targetDots = y * 341 + x + 1;
+        var currentDots = (int)ppu.TotalDots;
+        ppu.Clock(targetDots - currentDots);
     }
 
     private static void WriteSprite(PpuBus ppu, int index, byte y, byte tile, byte attributes, byte x)

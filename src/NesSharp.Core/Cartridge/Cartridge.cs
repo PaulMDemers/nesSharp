@@ -32,6 +32,8 @@ public sealed class Cartridge
 
     public byte PpuRead(ushort address) => Mapper.PpuRead(address);
 
+    public byte PpuPeek(ushort address) => Mapper.PpuPeek(address);
+
     public void PpuWrite(ushort address, byte value) => Mapper.PpuWrite(address, value);
 
     public void NotifyPpuAddress(ushort address) => Mapper.NotifyPpuAddress(address);

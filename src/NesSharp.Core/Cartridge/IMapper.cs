@@ -14,6 +14,8 @@ public interface IMapper
 
     byte PpuRead(ushort address);
 
+    byte PpuPeek(ushort address);
+
     void PpuWrite(ushort address, byte value);
 
     void NotifyPpuAddress(ushort address);

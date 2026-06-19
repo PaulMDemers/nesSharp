@@ -46,6 +46,11 @@ public sealed class Mapper0 : IMapper
 
     public byte PpuRead(ushort address)
     {
+        return PpuPeek(address);
+    }
+
+    public byte PpuPeek(ushort address)
+    {
         if (address > 0x1FFF)
         {
             return 0;

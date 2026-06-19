@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using NesSharp.Core.Cartridge;
 using NesSharp.Core.Cpu;
@@ -22,10 +23,11 @@ try
         "test-rom" => RunTestRom(args),
         "shell-test-rom" => RunShellTestRom(args),
         "render-frame" => RenderFrame(args),
+        "compare-frame" => CompareFrame(args),
         _ => UnknownCommand(args[0])
     };
 }
-catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidRomException or NotSupportedException)
+catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidRomException or NotSupportedException)
 {
     Console.Error.WriteLine(ex.Message);
     return 1;
@@ -79,6 +81,8 @@ static void PrintUsage()
     Console.WriteLine("                   Run a shell-exit ROM and report the exit accumulator.");
     Console.WriteLine("  render-frame <rom.nes> --out frame.ppm [--frames 1] [--max-instructions 50000000]");
     Console.WriteLine("                   Run a ROM and export the latest 256x240 framebuffer as PPM.");
+    Console.WriteLine("  compare-frame <rom.nes> --reference frame.ppm [--frames 1] [--out actual.ppm]");
+    Console.WriteLine("                   Compare nesSharp RGB output against a 256x240 binary PPM reference.");
 }
 
 static int RunTestRom(string[] args)
@@ -141,9 +145,72 @@ static int RenderFrame(string[] args)
         return 1;
     }
 
+    var result = RenderFrameBuffer(args[1], args);
+    if (!result.Completed)
+    {
+        Console.Error.WriteLine($"Timed out after {result.Instructions} instructions before reaching frame {result.TargetFrame}.");
+        return 1;
+    }
+
+    PpmWriter.Write(outputPath, result.Framebuffer);
+    Console.WriteLine($"Wrote {Path.GetFullPath(outputPath)} after {result.Instructions} instructions, frame {result.Frame}.");
+    return 0;
+}
+
+static int CompareFrame(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.Error.WriteLine("Usage: NesSharp.Cli compare-frame <rom.nes> --reference frame.ppm [--frames 1] [--out actual.ppm] [--max-instructions 50000000]");
+        return 1;
+    }
+
+    var referencePath = GetOption(args, "--reference");
+    if (string.IsNullOrWhiteSpace(referencePath))
+    {
+        Console.Error.WriteLine("Missing required --reference <frame.ppm> option.");
+        return 1;
+    }
+
+    var result = RenderFrameBuffer(args[1], args);
+    if (!result.Completed)
+    {
+        Console.Error.WriteLine($"Timed out after {result.Instructions} instructions before reaching frame {result.TargetFrame}.");
+        return 1;
+    }
+
+    var actualRgb = PpmWriter.ToRgb(result.Framebuffer);
+    var expectedRgb = PpmReader.ReadRgb(referencePath);
+    if (expectedRgb.Length != actualRgb.Length)
+    {
+        Console.Error.WriteLine($"Reference RGB payload has {expectedRgb.Length} bytes; expected {actualRgb.Length}.");
+        return 1;
+    }
+
+    var outputPath = GetOption(args, "--out");
+    if (!string.IsNullOrWhiteSpace(outputPath))
+    {
+        PpmWriter.Write(outputPath, result.Framebuffer);
+        Console.WriteLine($"Wrote actual frame: {Path.GetFullPath(outputPath)}");
+    }
+
+    var diff = FrameDiff.Calculate(actualRgb, expectedRgb);
+    Console.WriteLine($"Frame: {result.Frame}");
+    Console.WriteLine($"Instructions: {result.Instructions}");
+    Console.WriteLine($"Actual SHA256: {Convert.ToHexString(SHA256.HashData(actualRgb)).ToLowerInvariant()}");
+    Console.WriteLine($"Reference SHA256: {Convert.ToHexString(SHA256.HashData(expectedRgb)).ToLowerInvariant()}");
+    Console.WriteLine($"Differing pixels: {diff.DifferingPixels} / {FrameDiff.PixelCount}");
+    Console.WriteLine($"Max channel delta: {diff.MaxChannelDelta}");
+    Console.WriteLine($"Total absolute channel delta: {diff.TotalAbsoluteChannelDelta}");
+
+    return diff.DifferingPixels == 0 ? 0 : 2;
+}
+
+static RenderFrameResult RenderFrameBuffer(string romPath, string[] args)
+{
     var frames = GetIntOption(args, "--frames", 1);
     var maxInstructions = GetLongOption(args, "--max-instructions", 50_000_000);
-    var machine = NesMachine.LoadFile(args[1]);
+    var machine = NesMachine.LoadFile(romPath);
     machine.Reset();
     var targetFrame = machine.PpuBus.Frame + (ulong)Math.Max(1, frames);
 
@@ -154,15 +221,12 @@ static int RenderFrame(string[] args)
         instructions++;
     }
 
-    if (machine.PpuBus.Frame < targetFrame)
-    {
-        Console.Error.WriteLine($"Timed out after {instructions} instructions before reaching frame {targetFrame}.");
-        return 1;
-    }
-
-    PpmWriter.Write(outputPath, machine.PpuBus.Framebuffer);
-    Console.WriteLine($"Wrote {Path.GetFullPath(outputPath)} after {instructions} instructions, frame {machine.PpuBus.Frame}.");
-    return 0;
+    return new RenderFrameResult(
+        machine.PpuBus.Framebuffer.ToArray(),
+        machine.PpuBus.Frame,
+        targetFrame,
+        instructions,
+        machine.PpuBus.Frame >= targetFrame);
 }
 
 static int TraceRom(string[] args)
@@ -351,14 +415,151 @@ internal static class PpmWriter
         writer.Write("P6\n256 240\n255\n");
         writer.Flush();
 
+        var rgbFrame = ToRgb(framebuffer);
+        stream.Write(rgbFrame);
+    }
+
+    public static byte[] ToRgb(ReadOnlySpan<byte> framebuffer)
+    {
+        var rgbFrame = new byte[framebuffer.Length * 3];
         Span<byte> rgb = stackalloc byte[3];
-        foreach (var paletteIndex in framebuffer)
+        for (var i = 0; i < framebuffer.Length; i++)
         {
-            var color = NesSharp.Core.Ppu.NesPalette.GetRgb(paletteIndex);
+            var color = NesSharp.Core.Ppu.NesPalette.GetRgb(framebuffer[i]);
             rgb[0] = color.R;
             rgb[1] = color.G;
             rgb[2] = color.B;
-            stream.Write(rgb);
+            rgb.CopyTo(rgbFrame.AsSpan(i * 3, 3));
         }
+
+        return rgbFrame;
     }
 }
+
+internal static class PpmReader
+{
+    private const int ExpectedWidth = 256;
+    private const int ExpectedHeight = 240;
+    private const int ExpectedMaxValue = 255;
+
+    public static byte[] ReadRgb(string path)
+    {
+        var data = File.ReadAllBytes(path);
+        var offset = 0;
+        var magic = ReadToken(data, ref offset);
+        var width = int.Parse(ReadToken(data, ref offset), CultureInfo.InvariantCulture);
+        var height = int.Parse(ReadToken(data, ref offset), CultureInfo.InvariantCulture);
+        var maxValue = int.Parse(ReadToken(data, ref offset), CultureInfo.InvariantCulture);
+        if (magic != "P6" || width != ExpectedWidth || height != ExpectedHeight || maxValue != ExpectedMaxValue)
+        {
+            throw new InvalidDataException("Reference frame must be a 256x240 binary PPM (P6) with max value 255.");
+        }
+
+        SkipSingleHeaderDelimiter(data, ref offset);
+        var expectedLength = ExpectedWidth * ExpectedHeight * 3;
+        if (data.Length - offset < expectedLength)
+        {
+            throw new InvalidDataException("Reference frame ended before the complete RGB payload.");
+        }
+
+        var rgb = new byte[expectedLength];
+        data.AsSpan(offset, expectedLength).CopyTo(rgb);
+        return rgb;
+    }
+
+    private static string ReadToken(byte[] data, ref int offset)
+    {
+        SkipWhitespaceAndComments(data, ref offset);
+        var start = offset;
+        while (offset < data.Length && !char.IsWhiteSpace((char)data[offset]))
+        {
+            offset++;
+        }
+
+        if (offset == start)
+        {
+            throw new InvalidDataException("Invalid PPM header.");
+        }
+
+        return System.Text.Encoding.ASCII.GetString(data, start, offset - start);
+    }
+
+    private static void SkipWhitespaceAndComments(byte[] data, ref int offset)
+    {
+        while (offset < data.Length)
+        {
+            if (char.IsWhiteSpace((char)data[offset]))
+            {
+                offset++;
+                continue;
+            }
+
+            if (data[offset] != '#')
+            {
+                return;
+            }
+
+            while (offset < data.Length && data[offset] is not (byte)'\n')
+            {
+                offset++;
+            }
+        }
+    }
+
+    private static void SkipSingleHeaderDelimiter(byte[] data, ref int offset)
+    {
+        if (offset >= data.Length || !char.IsWhiteSpace((char)data[offset]))
+        {
+            throw new InvalidDataException("Invalid PPM header delimiter.");
+        }
+
+        offset++;
+    }
+}
+
+internal static class FrameDiff
+{
+    public const int PixelCount = 256 * 240;
+
+    public static FrameDiffResult Calculate(ReadOnlySpan<byte> actualRgb, ReadOnlySpan<byte> expectedRgb)
+    {
+        var differingPixels = 0;
+        var maxChannelDelta = 0;
+        long totalAbsoluteChannelDelta = 0;
+
+        for (var i = 0; i < actualRgb.Length; i += 3)
+        {
+            var pixelDiffers = false;
+            for (var channel = 0; channel < 3; channel++)
+            {
+                var delta = Math.Abs(actualRgb[i + channel] - expectedRgb[i + channel]);
+                if (delta != 0)
+                {
+                    pixelDiffers = true;
+                }
+
+                maxChannelDelta = Math.Max(maxChannelDelta, delta);
+                totalAbsoluteChannelDelta += delta;
+            }
+
+            if (pixelDiffers)
+            {
+                differingPixels++;
+            }
+        }
+
+        return new FrameDiffResult(differingPixels, maxChannelDelta, totalAbsoluteChannelDelta);
+    }
+}
+
+internal readonly record struct RenderFrameResult(
+    byte[] Framebuffer,
+    ulong Frame,
+    ulong TargetFrame,
+    long Instructions,
+    bool Completed);
+
+internal readonly record struct FrameDiffResult(
+    int DifferingPixels,
+    int MaxChannelDelta,
+    long TotalAbsoluteChannelDelta);
