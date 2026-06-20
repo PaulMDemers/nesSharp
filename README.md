@@ -13,6 +13,7 @@ dotnet run --project src\NesSharp.Cli -- test-rom test-roms\nes-test-roms\instr_
 dotnet run --project src\NesSharp.Cli -- test-rom test-roms\nes-test-roms\ppu_vbl_nmi\rom_singles\01-vbl_basics.nes
 dotnet run --project src\NesSharp.Cli -- render-frame test-roms\nes-test-roms\ppu_read_buffer\test_ppu_read_buffer.nes --frames 120 --out artifacts\frames\ppu_read_buffer_frame120.ppm
 dotnet run --project src\NesSharp.Cli -- render-frame "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" --frames 420 --input "60-90:Start;180-240:Start;260-420:Right+B" --out artifacts\frames\smb3_frame420_nessharp.bmp
+.\scripts\capture-mame-frame.ps1 "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" -Frame 420 -OutPath artifacts\mame\smb3_frame420.bmp
 dotnet run --project src\NesSharp.Cli -- compare-frame "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" --frames 420 --input "60-90:Start;180-240:Start;260-420:Right+B" --reference artifacts\mame\smb3_frame420.bmp --out artifacts\frames\smb3_frame420_nessharp.bmp
 dotnet run --project src\NesSharp.Desktop -- test-roms\nes-test-roms\ppu_read_buffer\test_ppu_read_buffer.nes
 ```
@@ -22,7 +23,7 @@ Battery-backed saves are loaded from and written to a `.sav` file beside the ROM
 
 `render-frame` and `compare-frame` support 256x240 binary PPM (`P6`) and uncompressed 24-bit BMP files. MAME snapshots are commonly PNG files; convert those to BMP or PPM first, then compare the converted reference against nesSharp's rendered frame.
 Frame rendering commands also support `--input`, using semicolon-separated frame ranges like `60-90:Start;260-420:Right+B`.
-For local reference captures, MAME 0.288 can be installed under `tools\mame-0.288\mame.exe`; the `tools` folder is intentionally ignored by git.
+For local reference captures, MAME 0.288 can be installed under `tools\mame-0.288\mame.exe`; the `tools` folder is intentionally ignored by git. `scripts\capture-mame-frame.ps1` captures no-input MAME reference frames with the NES NTSC frame rate and converts MAME's PNG snapshot to BMP/PPM/PNG output.
 
 ## Current Status
 
