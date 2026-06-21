@@ -79,7 +79,7 @@ public sealed class Mapper3 : IMapper
         chrMemory[MapChrAddress(address)] = value;
     }
 
-    public void NotifyPpuAddress(ushort address)
+    public void NotifyPpuAddress(ushort address, ulong ppuDot)
     {
     }
 

@@ -2,6 +2,8 @@ namespace NesSharp.Core.Cartridge;
 
 public sealed class Cartridge
 {
+    private ulong syntheticNotificationDot;
+
     public Cartridge(CartridgeHeader header, byte[] prgRom, byte[] chrMemory, IMapper mapper)
     {
         Header = header;
@@ -36,7 +38,13 @@ public sealed class Cartridge
 
     public void PpuWrite(ushort address, byte value) => Mapper.PpuWrite(address, value);
 
-    public void NotifyPpuAddress(ushort address) => Mapper.NotifyPpuAddress(address);
+    public void NotifyPpuAddress(ushort address)
+    {
+        Mapper.NotifyPpuAddress(address, syntheticNotificationDot);
+        syntheticNotificationDot += 16;
+    }
+
+    public void NotifyPpuAddress(ushort address, ulong ppuDot) => Mapper.NotifyPpuAddress(address, ppuDot);
 
     public void LoadSaveRam(ReadOnlySpan<byte> data) => Mapper.LoadSaveRam(data);
 }

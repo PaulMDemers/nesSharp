@@ -4,6 +4,7 @@ public sealed class Mapper4 : IMapper
 {
     private const int PrgBankSize = 8 * 1024;
     private const int ChrBankSize = 1024;
+    private const ulong A12LowFilterDots = 0;
 
     private readonly CartridgeHeader header;
     private readonly byte[] prgRom;
@@ -20,6 +21,7 @@ public sealed class Mapper4 : IMapper
     private bool irqEnabled;
     private bool irqPending;
     private bool ppuA12High;
+    private ulong ppuA12LowSinceDot;
 
     public Mapper4(CartridgeHeader header, byte[] prgRom, byte[] chrMemory)
     {
@@ -137,7 +139,7 @@ public sealed class Mapper4 : IMapper
 
     public byte PpuRead(ushort address)
     {
-        NotifyPpuAddress(address);
+        NotifyPpuAddress(address, 0);
         return PpuPeek(address);
     }
 
@@ -153,7 +155,7 @@ public sealed class Mapper4 : IMapper
 
     public void PpuWrite(ushort address, byte value)
     {
-        NotifyPpuAddress(address);
+        NotifyPpuAddress(address, 0);
         if (address > 0x1FFF || !header.UsesChrRam)
         {
             return;
@@ -162,15 +164,26 @@ public sealed class Mapper4 : IMapper
         chrMemory[MapChrAddress(address)] = value;
     }
 
-    public void NotifyPpuAddress(ushort address)
+    public void NotifyPpuAddress(ushort address, ulong ppuDot)
     {
         var a12High = (address & 0x1000) != 0;
-        if (!ppuA12High && a12High)
+        if (!a12High)
+        {
+            if (ppuA12High)
+            {
+                ppuA12LowSinceDot = ppuDot;
+            }
+
+            ppuA12High = false;
+            return;
+        }
+
+        if (!ppuA12High && ppuDot - ppuA12LowSinceDot >= A12LowFilterDots)
         {
             ClockIrqCounter();
         }
 
-        ppuA12High = a12High;
+        ppuA12High = true;
     }
 
     public void LoadSaveRam(ReadOnlySpan<byte> data)

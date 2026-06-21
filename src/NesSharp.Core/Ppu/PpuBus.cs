@@ -301,11 +301,10 @@ public sealed class PpuBus
             return;
         }
 
-        // MMC3 clocks from the rising edge of PPU A12 during rendered fetches.
-        // This approximates the first high background fetch in both normal and inverted pattern-table modes.
+        // MMC3 scanline tests expect the first high background fetch to clock in high-pattern-table mode.
         if (Dot is 1 or 321 && (registers[0] & 0x10) != 0)
         {
-            cartridge.NotifyPpuAddress(0x1000);
+            cartridge.NotifyPpuAddress(0x1000, TotalDots);
         }
 
         switch (Dot & 0x07)
@@ -373,6 +372,7 @@ public sealed class PpuBus
         if (nextScanline is >= 0 and < ScreenHeight)
         {
             LoadSpriteScanline(nextScanline);
+            NotifySpritePatternFetches(nextScanline);
         }
         else
         {
@@ -383,7 +383,7 @@ public sealed class PpuBus
         if (IsSpriteRenderingEnabled)
         {
             var spritePatternBase = (registers[0] & 0x08) == 0 ? 0x0000 : 0x1000;
-            cartridge.NotifyPpuAddress((ushort)spritePatternBase);
+            cartridge.NotifyPpuAddress((ushort)spritePatternBase, TotalDots);
         }
     }
 
@@ -715,7 +715,7 @@ public sealed class PpuBus
 
         temporaryVramAddress = (ushort)((temporaryVramAddress & 0x7F00) | value);
         currentVramAddress = temporaryVramAddress;
-        cartridge.NotifyPpuAddress(currentVramAddress);
+        cartridge.NotifyPpuAddress(currentVramAddress, TotalDots);
         renderBackgroundFromCurrentVramAddress = currentVramAddress < 0x2000;
         backgroundShiftRegister = default;
         if (renderBackgroundFromCurrentVramAddress && ShouldPrimeBackgroundShiftRegister())
@@ -755,7 +755,7 @@ public sealed class PpuBus
     private void IncrementVramAddress()
     {
         currentVramAddress = (ushort)((currentVramAddress + VramIncrement) & 0x7FFF);
-        cartridge.NotifyPpuAddress(currentVramAddress);
+        cartridge.NotifyPpuAddress(currentVramAddress, TotalDots);
     }
 
     private byte ReadMemory(ushort address)
@@ -971,7 +971,8 @@ public sealed class PpuBus
 
     private byte FetchBackgroundNametableByte(ushort renderAddress)
     {
-        return ReadMemory((ushort)(0x2000 | (renderAddress & 0x0FFF)));
+        var address = (ushort)(0x2000 | (renderAddress & 0x0FFF));
+        return ReadMemory(address);
     }
 
     private byte FetchBackgroundAttributePalette(ushort renderAddress)
@@ -1012,7 +1013,8 @@ public sealed class PpuBus
         var tileX = (scrolledX & 0xFF) / 8;
         var tileY = (scrolledY % 240) / 8;
         var fineY = scrolledY & 0x07;
-        var tileIndex = ReadMemory((ushort)(0x2000 + table * 0x0400 + tileY * 32 + tileX));
+        var nametableAddress = (ushort)(0x2000 + table * 0x0400 + tileY * 32 + tileX);
+        var tileIndex = ReadMemory(nametableAddress);
         var patternBase = (registers[0] & 0x10) == 0 ? 0x0000 : 0x1000;
         var patternAddress = (ushort)(patternBase + tileIndex * 16 + fineY);
         var low = cartridge.PpuRead(patternAddress);
@@ -1178,10 +1180,21 @@ public sealed class PpuBus
     private SpriteRenderEntry CreateSpriteRenderEntry(int spriteIndex, int y)
     {
         var offset = spriteIndex * 4;
+        var attributes = oam[offset + 2];
+        var spriteX = oam[offset + 3];
+
+        var patternAddress = GetSpritePatternAddress(spriteIndex, y);
+        var low = cartridge.PpuPeek(patternAddress);
+        var high = cartridge.PpuPeek((ushort)(patternAddress + 8));
+        return new SpriteRenderEntry(spriteIndex, (byte)spriteX, attributes, low, high);
+    }
+
+    private ushort GetSpritePatternAddress(int spriteIndex, int y)
+    {
+        var offset = spriteIndex * 4;
         var spriteY = oam[offset] + 1;
         var tileIndex = oam[offset + 1];
         var attributes = oam[offset + 2];
-        var spriteX = oam[offset + 3];
         var height = (registers[0] & 0x20) == 0 ? 8 : 16;
         var relativeY = y - spriteY;
 
@@ -1208,10 +1221,37 @@ public sealed class PpuBus
             tile = tileIndex;
         }
 
-        var patternAddress = (ushort)(patternBase + tile * 16 + relativeY);
-        var low = cartridge.PpuPeek(patternAddress);
-        var high = cartridge.PpuPeek((ushort)(patternAddress + 8));
-        return new SpriteRenderEntry(spriteIndex, (byte)spriteX, attributes, low, high);
+        return (ushort)(patternBase + tile * 16 + relativeY);
+    }
+
+    private void NotifySpritePatternFetches(int y)
+    {
+        if (!IsSpriteRenderingEnabled)
+        {
+            return;
+        }
+
+        cartridge.NotifyPpuAddress(0x0000, TotalDots);
+        for (var slot = 0; slot < scanlineSprites.Length; slot++)
+        {
+            var patternAddress = slot < scanlineSpriteCount
+                ? GetSpritePatternAddress(scanlineSprites[slot].SpriteIndex, y)
+                : GetDummySpritePatternAddress();
+            var lowDot = TotalDots + 4UL + (ulong)(slot * 8);
+            cartridge.NotifyPpuAddress(patternAddress, lowDot);
+            cartridge.NotifyPpuAddress((ushort)(patternAddress + 8), lowDot + 2);
+        }
+    }
+
+    private ushort GetDummySpritePatternAddress()
+    {
+        if ((registers[0] & 0x20) != 0)
+        {
+            return 0x1FF0;
+        }
+
+        var patternBase = (registers[0] & 0x08) == 0 ? 0x0000 : 0x1000;
+        return (ushort)(patternBase + 0x0FF0);
     }
 
     private static int GetSpriteEntryColor(SpriteRenderEntry sprite, int x)

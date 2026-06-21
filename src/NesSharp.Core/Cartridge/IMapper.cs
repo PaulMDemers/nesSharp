@@ -18,7 +18,7 @@ public interface IMapper
 
     void PpuWrite(ushort address, byte value);
 
-    void NotifyPpuAddress(ushort address);
+    void NotifyPpuAddress(ushort address, ulong ppuDot);
 
     void LoadSaveRam(ReadOnlySpan<byte> data);
 }
