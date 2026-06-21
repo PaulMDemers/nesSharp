@@ -41,6 +41,41 @@ public sealed class Mapper4 : IMapper
 
     public bool IsIrqPending => irqPending;
 
+    public Mapper4DebugState CaptureDebugState()
+    {
+        var registers = new byte[bankRegisters.Length];
+        bankRegisters.CopyTo(registers, 0);
+
+        var prgBanks = new int[4];
+        for (var slot = 0; slot < prgBanks.Length; slot++)
+        {
+            prgBanks[slot] = GetPrgBankForSlot(slot);
+        }
+
+        var chrBanks = new int[8];
+        for (var slot = 0; slot < chrBanks.Length; slot++)
+        {
+            chrBanks[slot] = GetChrBankForSlot(slot);
+        }
+
+        return new Mapper4DebugState(
+            bankSelect,
+            registers,
+            IsPrgBankModeInverted,
+            IsChrBankModeInverted,
+            prgBanks,
+            chrBanks,
+            irqLatch,
+            irqCounter,
+            irqReload,
+            irqEnabled,
+            irqPending,
+            ppuA12High,
+            prgRamEnabled,
+            prgRamWriteProtected,
+            mirroringMode);
+    }
+
     public byte CpuRead(ushort address)
     {
         return address switch
@@ -155,6 +190,11 @@ public sealed class Mapper4 : IMapper
     {
         var slot = (address - 0x8000) / PrgBankSize;
         var offset = address & (PrgBankSize - 1);
+        return GetPrgBankForSlot(slot) * PrgBankSize + offset;
+    }
+
+    private int GetPrgBankForSlot(int slot)
+    {
         var secondLastBank = PrgBankCount - 2;
         var lastBank = PrgBankCount - 1;
         var bank = slot switch
@@ -165,13 +205,18 @@ public sealed class Mapper4 : IMapper
             _ => lastBank
         };
 
-        return (bank % PrgBankCount) * PrgBankSize + offset;
+        return bank % PrgBankCount;
     }
 
     private int MapChrAddress(ushort address)
     {
         var slot = address / ChrBankSize;
         var offset = address & (ChrBankSize - 1);
+        return GetChrBankForSlot(slot) * ChrBankSize + offset;
+    }
+
+    private int GetChrBankForSlot(int slot)
+    {
         var bank = IsChrBankModeInverted
             ? slot switch
             {
@@ -196,7 +241,7 @@ public sealed class Mapper4 : IMapper
                 _ => bankRegisters[5]
             };
 
-        return (bank % ChrBankCount) * ChrBankSize + offset;
+        return bank % ChrBankCount;
     }
 
     private void ClockIrqCounter()
@@ -217,3 +262,20 @@ public sealed class Mapper4 : IMapper
         }
     }
 }
+
+public readonly record struct Mapper4DebugState(
+    byte BankSelect,
+    byte[] BankRegisters,
+    bool IsPrgBankModeInverted,
+    bool IsChrBankModeInverted,
+    int[] PrgBanks,
+    int[] ChrBanks,
+    byte IrqLatch,
+    byte IrqCounter,
+    bool IrqReload,
+    bool IrqEnabled,
+    bool IrqPending,
+    bool PpuA12High,
+    bool PrgRamEnabled,
+    bool PrgRamWriteProtected,
+    MirroringMode MirroringMode);

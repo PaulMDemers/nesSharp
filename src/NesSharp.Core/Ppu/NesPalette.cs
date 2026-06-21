@@ -2,26 +2,77 @@ namespace NesSharp.Core.Ppu;
 
 public static class NesPalette
 {
-    private static readonly NesColor[] Colors =
-    [
-        new(0x62, 0x62, 0x62), new(0x00, 0x1F, 0xB2), new(0x24, 0x04, 0xC8), new(0x52, 0x00, 0xB2),
-        new(0x73, 0x00, 0x76), new(0x80, 0x00, 0x24), new(0x73, 0x0B, 0x00), new(0x52, 0x28, 0x00),
-        new(0x24, 0x44, 0x00), new(0x00, 0x57, 0x00), new(0x00, 0x5C, 0x00), new(0x00, 0x53, 0x24),
-        new(0x00, 0x3C, 0x76), new(0x00, 0x00, 0x00), new(0x00, 0x00, 0x00), new(0x00, 0x00, 0x00),
-        new(0xAB, 0xAB, 0xAB), new(0x0D, 0x57, 0xFF), new(0x4B, 0x30, 0xFF), new(0x8A, 0x13, 0xFF),
-        new(0xBC, 0x08, 0xD6), new(0xD2, 0x12, 0x69), new(0xC7, 0x2E, 0x00), new(0x9D, 0x54, 0x00),
-        new(0x60, 0x78, 0x00), new(0x20, 0x8A, 0x00), new(0x00, 0x8F, 0x00), new(0x00, 0x83, 0x57),
-        new(0x00, 0x6B, 0xC7), new(0x00, 0x00, 0x00), new(0x00, 0x00, 0x00), new(0x00, 0x00, 0x00),
-        new(0xFF, 0xFF, 0xFF), new(0x53, 0xAE, 0xFF), new(0x90, 0x85, 0xFF), new(0xD3, 0x65, 0xFF),
-        new(0xFF, 0x57, 0xFF), new(0xFF, 0x5D, 0xCF), new(0xFF, 0x77, 0x57), new(0xFA, 0x9E, 0x00),
-        new(0xBD, 0xC7, 0x00), new(0x7A, 0xE7, 0x00), new(0x43, 0xF6, 0x11), new(0x26, 0xEF, 0x7E),
-        new(0x2C, 0xD5, 0xF6), new(0x4E, 0x4E, 0x4E), new(0x00, 0x00, 0x00), new(0x00, 0x00, 0x00),
-        new(0xFF, 0xFF, 0xFF), new(0xB6, 0xE1, 0xFF), new(0xCE, 0xD1, 0xFF), new(0xE9, 0xC3, 0xFF),
-        new(0xFF, 0xBC, 0xFF), new(0xFF, 0xBD, 0xF4), new(0xFF, 0xC6, 0xC3), new(0xFF, 0xD5, 0x9A),
-        new(0xE9, 0xE6, 0x81), new(0xCE, 0xF4, 0x81), new(0xB6, 0xFB, 0x9A), new(0xA9, 0xFA, 0xC3),
-        new(0xA9, 0xF0, 0xF4), new(0xB8, 0xB8, 0xB8), new(0x00, 0x00, 0x00), new(0x00, 0x00, 0x00)
-    ];
+    private static readonly NesColor[] Colors = CreateMameCompatibleNtscPalette();
 
     public static NesColor GetRgb(byte paletteIndex) => Colors[paletteIndex & 0x3F];
-}
 
+    private static NesColor[] CreateMameCompatibleNtscPalette()
+    {
+        const double tint = 0.22;
+        const double hue = 287.0;
+        const double kr = 0.2989;
+        const double kb = 0.1145;
+        const double ku = 2.029;
+        const double kv = 1.140;
+
+        double[,] brightness =
+        {
+            { 0.50, 0.75, 1.0, 1.0 },
+            { 0.29, 0.45, 0.73, 0.9 },
+            { 0.0, 0.24, 0.47, 0.77 }
+        };
+
+        var colors = new NesColor[64];
+        for (var intensity = 0; intensity < 4; intensity++)
+        {
+            for (var colorNumber = 0; colorNumber < 16; colorNumber++)
+            {
+                double saturation;
+                double radians;
+                double y;
+
+                switch (colorNumber)
+                {
+                    case 0:
+                        saturation = 0.0;
+                        radians = 0.0;
+                        y = brightness[0, intensity];
+                        break;
+                    case 13:
+                        saturation = 0.0;
+                        radians = 0.0;
+                        y = brightness[2, intensity];
+                        break;
+                    case 14:
+                    case 15:
+                        saturation = 0.0;
+                        radians = 0.0;
+                        y = 0.0;
+                        break;
+                    default:
+                        saturation = tint;
+                        radians = DegreesToRadians(colorNumber * 30.0 + hue);
+                        y = brightness[1, intensity];
+                        break;
+                }
+
+                var u = saturation * Math.Cos(radians);
+                var v = saturation * Math.Sin(radians);
+                var red = (y + kv * v) * 255.0;
+                var green = (y - ((kb * ku * u) + (kr * kv * v)) / (1.0 - kb - kr)) * 255.0;
+                var blue = (y + ku * u) * 255.0;
+
+                colors[(intensity * 16) + colorNumber] = new NesColor(
+                    RoundColor(red),
+                    RoundColor(green),
+                    RoundColor(blue));
+            }
+        }
+
+        return colors;
+    }
+
+    private static double DegreesToRadians(double degrees) => degrees * Math.PI / 180.0;
+
+    private static byte RoundColor(double value) => (byte)Math.Clamp(Math.Floor(value + 0.5), 0.0, 255.0);
+}

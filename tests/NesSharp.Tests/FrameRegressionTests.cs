@@ -21,7 +21,7 @@ public sealed class FrameRegressionTests
 
         var hash = Convert.ToHexString(SHA256.HashData(ToRgb(machine.PpuBus.Framebuffer))).ToLowerInvariant();
 
-        Assert.Equal("807c3c7c4c94f22c5067b3afbb8a3f0566c35de2cb5687cfe6ef466b778ed9f5", hash);
+        Assert.Equal("bc7757d41cccd8f086a2724e6f1bdee9f8f196cc7c80b7a88ba5960358ea8e6c", hash);
     }
 
     private static byte[] ToRgb(ReadOnlySpan<byte> framebuffer)

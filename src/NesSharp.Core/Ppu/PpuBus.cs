@@ -63,6 +63,59 @@ public sealed class PpuBus
 
     public ReadOnlySpan<byte> Framebuffer => framebuffer;
 
+    public PpuDebugState CaptureDebugState()
+    {
+        var palette = new byte[paletteRam.Length];
+        paletteRam.CopyTo(palette, 0);
+
+        var nametableSample = new byte[64];
+        nametableRam.AsSpan(0, nametableSample.Length).CopyTo(nametableSample);
+
+        return new PpuDebugState(
+            Frame,
+            Scanline,
+            Dot,
+            TotalDots,
+            registers[0],
+            registers[1],
+            registers[2],
+            effectiveMask,
+            pendingMask,
+            pendingMaskDelayDots,
+            currentVramAddress,
+            temporaryVramAddress,
+            fineX,
+            scrollX,
+            scrollY,
+            readBuffer,
+            oamAddress,
+            writeToggle,
+            IsRenderingEnabled,
+            IsBackgroundEnabled,
+            IsSpriteRenderingEnabled,
+            ShowBackgroundInLeftColumn,
+            ShowSpritesInLeftColumn,
+            renderBackgroundFromCurrentVramAddress,
+            backgroundFetchPipeline.IsValid,
+            backgroundFetchPipeline.RenderAddress,
+            backgroundFetchPipeline.TileIndex,
+            backgroundFetchPipeline.AttributePalette,
+            backgroundFetchPipeline.PatternAddress,
+            backgroundFetchPipeline.PatternLow,
+            backgroundFetchPipeline.PatternHigh,
+            backgroundShiftRegister.IsValid,
+            backgroundShiftRegister.RenderAddress,
+            backgroundShiftRegister.NextRenderAddress,
+            backgroundShiftRegister.PatternLow,
+            backgroundShiftRegister.PatternHigh,
+            backgroundShiftRegister.AttributeLow,
+            backgroundShiftRegister.AttributeHigh,
+            scanlineSpriteY,
+            scanlineSpriteCount,
+            palette,
+            nametableSample);
+    }
+
     public byte ReadRegister(ushort address)
     {
         var register = address & 0x0007;
@@ -1228,3 +1281,47 @@ public sealed class PpuBus
         byte PatternLow,
         byte PatternHigh);
 }
+
+public readonly record struct PpuDebugState(
+    ulong Frame,
+    int Scanline,
+    int Dot,
+    ulong TotalDots,
+    byte Control,
+    byte Mask,
+    byte Status,
+    byte EffectiveMask,
+    byte PendingMask,
+    int PendingMaskDelayDots,
+    ushort CurrentVramAddress,
+    ushort TemporaryVramAddress,
+    byte FineX,
+    int ScrollX,
+    int ScrollY,
+    byte ReadBuffer,
+    byte OamAddress,
+    bool WriteToggle,
+    bool IsRenderingEnabled,
+    bool IsBackgroundEnabled,
+    bool IsSpriteRenderingEnabled,
+    bool ShowBackgroundInLeftColumn,
+    bool ShowSpritesInLeftColumn,
+    bool RenderBackgroundFromCurrentVramAddress,
+    bool BackgroundFetchValid,
+    ushort BackgroundFetchRenderAddress,
+    byte BackgroundFetchTileIndex,
+    byte BackgroundFetchAttributePalette,
+    ushort BackgroundFetchPatternAddress,
+    byte BackgroundFetchPatternLow,
+    byte BackgroundFetchPatternHigh,
+    bool BackgroundShiftValid,
+    ushort BackgroundShiftRenderAddress,
+    ushort BackgroundShiftNextRenderAddress,
+    ushort BackgroundShiftPatternLow,
+    ushort BackgroundShiftPatternHigh,
+    ushort BackgroundShiftAttributeLow,
+    ushort BackgroundShiftAttributeHigh,
+    int ScanlineSpriteY,
+    int ScanlineSpriteCount,
+    byte[] PaletteRam,
+    byte[] NametableSample);

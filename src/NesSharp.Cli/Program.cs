@@ -25,6 +25,8 @@ try
         "shell-test-rom" => RunShellTestRom(args),
         "render-frame" => RenderFrame(args),
         "compare-frame" => CompareFrame(args),
+        "scan-frame-match" => ScanFrameMatch(args),
+        "diagnose-frame" => DiagnoseFrame(args),
         _ => UnknownCommand(args[0])
     };
 }
@@ -84,6 +86,10 @@ static void PrintUsage()
     Console.WriteLine("                   Run a ROM and export the latest 256x240 framebuffer.");
     Console.WriteLine("  compare-frame <rom.nes> --reference frame.ppm|frame.bmp [--frames 1] [--input \"60-90:Start\"]");
     Console.WriteLine("                   Compare nesSharp RGB output against a 256x240 reference frame.");
+    Console.WriteLine("  scan-frame-match <rom.nes> --reference frame.ppm|frame.bmp --start-frame 1 --end-frame 300");
+    Console.WriteLine("                   Compare a reference against each frame in a nesSharp frame range.");
+    Console.WriteLine("  diagnose-frame <rom.nes> [--frames 1] [--input \"60-90:Start\"]");
+    Console.WriteLine("                   Print PPU and mapper state after running to a frame.");
 }
 
 static int RunTestRom(string[] args)
@@ -207,7 +213,114 @@ static int CompareFrame(string[] args)
     return diff.DifferingPixels == 0 ? 0 : 2;
 }
 
+static int ScanFrameMatch(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.Error.WriteLine("Usage: NesSharp.Cli scan-frame-match <rom.nes> --reference frame.ppm|frame.bmp --start-frame 1 --end-frame 300 [--input \"60-90:Start\"] [--max-instructions 50000000]");
+        return 1;
+    }
+
+    var referencePath = GetOption(args, "--reference");
+    if (string.IsNullOrWhiteSpace(referencePath))
+    {
+        Console.Error.WriteLine("Missing required --reference <frame.ppm|frame.bmp> option.");
+        return 1;
+    }
+
+    var startFrame = GetIntOption(args, "--start-frame", 1);
+    var endFrame = GetIntOption(args, "--end-frame", startFrame);
+    if (startFrame < 1 || endFrame < startFrame)
+    {
+        Console.Error.WriteLine("Frame range must satisfy 1 <= start-frame <= end-frame.");
+        return 1;
+    }
+
+    var expectedRgb = FrameImage.ReadRgb(referencePath);
+    var maxInstructions = GetLongOption(args, "--max-instructions", 50_000_000);
+    var inputScript = FrameInputScript.Parse(GetOption(args, "--input"));
+    var machine = NesMachine.LoadFile(args[1]);
+    machine.Reset();
+
+    long instructions = 0;
+    ulong lastScannedFrame = 0;
+    FrameScanResult? best = null;
+    Console.WriteLine("frame,instructions,differing_pixels,max_channel_delta,total_absolute_channel_delta");
+
+    while (machine.PpuBus.Frame < (ulong)endFrame && instructions < maxInstructions)
+    {
+        machine.Controller1.State = inputScript.GetState(machine.PpuBus.Frame);
+        machine.StepInstruction();
+        instructions++;
+
+        if (machine.PpuBus.Frame < (ulong)startFrame ||
+            machine.PpuBus.Frame > (ulong)endFrame ||
+            machine.PpuBus.Frame == lastScannedFrame)
+        {
+            continue;
+        }
+
+        lastScannedFrame = machine.PpuBus.Frame;
+        var actualRgb = FrameImage.ToRgb(machine.PpuBus.Framebuffer);
+        var diff = FrameDiff.Calculate(actualRgb, expectedRgb);
+        Console.WriteLine($"{machine.PpuBus.Frame},{instructions},{diff.DifferingPixels},{diff.MaxChannelDelta},{diff.TotalAbsoluteChannelDelta}");
+
+        var candidate = new FrameScanResult(machine.PpuBus.Frame, instructions, diff);
+        if (best is null || candidate.Diff.TotalAbsoluteChannelDelta < best.Value.Diff.TotalAbsoluteChannelDelta)
+        {
+            best = candidate;
+        }
+    }
+
+    if (machine.PpuBus.Frame < (ulong)endFrame)
+    {
+        Console.Error.WriteLine($"Timed out after {instructions} instructions before reaching frame {endFrame}.");
+        return 1;
+    }
+
+    if (best is not null)
+    {
+        Console.WriteLine($"Best frame: {best.Value.Frame}");
+        Console.WriteLine($"Best instructions: {best.Value.Instructions}");
+        Console.WriteLine($"Best differing pixels: {best.Value.Diff.DifferingPixels} / {FrameDiff.PixelCount}");
+        Console.WriteLine($"Best max channel delta: {best.Value.Diff.MaxChannelDelta}");
+        Console.WriteLine($"Best total absolute channel delta: {best.Value.Diff.TotalAbsoluteChannelDelta}");
+    }
+
+    return 0;
+}
+
 static RenderFrameResult RenderFrameBuffer(string romPath, string[] args)
+{
+    var result = RunMachineToFrame(romPath, args);
+    return new RenderFrameResult(
+        result.Machine.PpuBus.Framebuffer.ToArray(),
+        result.Machine.PpuBus.Frame,
+        result.TargetFrame,
+        result.Instructions,
+        result.Completed);
+}
+
+static int DiagnoseFrame(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.Error.WriteLine("Usage: NesSharp.Cli diagnose-frame <rom.nes> [--frames 1] [--input \"60-90:Start\"] [--max-instructions 50000000]");
+        return 1;
+    }
+
+    var result = RunMachineToFrame(args[1], args);
+    if (!result.Completed)
+    {
+        Console.Error.WriteLine($"Timed out after {result.Instructions} instructions before reaching frame {result.TargetFrame}.");
+        return 1;
+    }
+
+    PrintFrameDiagnosis(result);
+    return 0;
+}
+
+static MachineFrameResult RunMachineToFrame(string romPath, string[] args)
 {
     var frames = GetIntOption(args, "--frames", 1);
     var maxInstructions = GetLongOption(args, "--max-instructions", 50_000_000);
@@ -224,12 +337,48 @@ static RenderFrameResult RenderFrameBuffer(string romPath, string[] args)
         instructions++;
     }
 
-    return new RenderFrameResult(
-        machine.PpuBus.Framebuffer.ToArray(),
-        machine.PpuBus.Frame,
+    return new MachineFrameResult(
+        machine,
         targetFrame,
         instructions,
         machine.PpuBus.Frame >= targetFrame);
+}
+
+static void PrintFrameDiagnosis(MachineFrameResult result)
+{
+    var machine = result.Machine;
+    var ppu = machine.PpuBus.CaptureDebugState();
+    Console.WriteLine($"Frame: {ppu.Frame} (target {result.TargetFrame})");
+    Console.WriteLine($"Instructions: {result.Instructions}");
+    Console.WriteLine($"PPU: scanline {ppu.Scanline}, dot {ppu.Dot}, total dots {ppu.TotalDots}");
+    Console.WriteLine($"PPUCTRL: ${ppu.Control:X2}  PPUMASK: ${ppu.Mask:X2}  PPUSTATUS: ${ppu.Status:X2}");
+    Console.WriteLine($"Effective mask: ${ppu.EffectiveMask:X2}  Pending mask: ${ppu.PendingMask:X2}  Pending mask delay: {ppu.PendingMaskDelayDots}");
+    Console.WriteLine($"Rendering: enabled={ppu.IsRenderingEnabled}, bg={ppu.IsBackgroundEnabled}, sprites={ppu.IsSpriteRenderingEnabled}, left bg={ppu.ShowBackgroundInLeftColumn}, left sprites={ppu.ShowSpritesInLeftColumn}");
+    Console.WriteLine($"Scroll: x={ppu.ScrollX}, y={ppu.ScrollY}, fineX={ppu.FineX}, writeToggle={ppu.WriteToggle}");
+    Console.WriteLine($"VRAM: current=${ppu.CurrentVramAddress:X4}, temporary=${ppu.TemporaryVramAddress:X4}, readBuffer=${ppu.ReadBuffer:X2}");
+    Console.WriteLine($"OAM: address=${ppu.OamAddress:X2}, scanline sprite y={ppu.ScanlineSpriteY}, scanline sprite count={ppu.ScanlineSpriteCount}");
+    Console.WriteLine($"Palette RAM: {FormatBytes(ppu.PaletteRam)}");
+    Console.WriteLine($"Nametable $2000 sample: {FormatBytes(ppu.NametableSample)}");
+    Console.WriteLine($"Background fetch: valid={ppu.BackgroundFetchValid}, render=${ppu.BackgroundFetchRenderAddress:X4}, tile=${ppu.BackgroundFetchTileIndex:X2}, attr={ppu.BackgroundFetchAttributePalette}, pattern=${ppu.BackgroundFetchPatternAddress:X4}, low=${ppu.BackgroundFetchPatternLow:X2}, high=${ppu.BackgroundFetchPatternHigh:X2}");
+    Console.WriteLine($"Background shift: valid={ppu.BackgroundShiftValid}, render=${ppu.BackgroundShiftRenderAddress:X4}, next=${ppu.BackgroundShiftNextRenderAddress:X4}, patternLow=${ppu.BackgroundShiftPatternLow:X4}, patternHigh=${ppu.BackgroundShiftPatternHigh:X4}, attrLow=${ppu.BackgroundShiftAttributeLow:X4}, attrHigh=${ppu.BackgroundShiftAttributeHigh:X4}");
+
+    var cartridge = machine.Cartridge;
+    Console.WriteLine($"Cartridge: mapper {cartridge.Header.MapperNumber}, mirroring {cartridge.CurrentMirroringMode}, CHR {(cartridge.Header.UsesChrRam ? "RAM" : "ROM")} {cartridge.ChrMemory.Length} bytes");
+    if (cartridge.Mapper is Mapper4 mapper4)
+    {
+        var mapper = mapper4.CaptureDebugState();
+        Console.WriteLine("Mapper 4:");
+        Console.WriteLine($"  bankSelect=${mapper.BankSelect:X2}, PRG inverted={mapper.IsPrgBankModeInverted}, CHR inverted={mapper.IsChrBankModeInverted}, mirroring={mapper.MirroringMode}");
+        Console.WriteLine($"  bank registers: {FormatBytes(mapper.BankRegisters)}");
+        Console.WriteLine($"  PRG 8K banks @8000/A000/C000/E000: {FormatInts(mapper.PrgBanks)}");
+        Console.WriteLine($"  CHR 1K banks @0000..1C00: {FormatInts(mapper.ChrBanks)}");
+        Console.WriteLine($"  IRQ latch=${mapper.IrqLatch:X2}, counter=${mapper.IrqCounter:X2}, reload={mapper.IrqReload}, enabled={mapper.IrqEnabled}, pending={mapper.IrqPending}, A12 high={mapper.PpuA12High}");
+        Console.WriteLine($"  PRG RAM enabled={mapper.PrgRamEnabled}, writeProtected={mapper.PrgRamWriteProtected}");
+    }
+    else
+    {
+        Console.WriteLine($"Mapper diagnostics: mapper {cartridge.Header.MapperNumber} does not expose extended debug state.");
+    }
 }
 
 static int TraceRom(string[] args)
@@ -347,6 +496,16 @@ static string? GetOption(string[] args, string name)
     }
 
     return null;
+}
+
+static string FormatBytes(IReadOnlyList<byte> values)
+{
+    return string.Join(" ", values.Select(value => $"${value:X2}"));
+}
+
+static string FormatInts(IReadOnlyList<int> values)
+{
+    return string.Join(" ", values.Select(value => value.ToString(CultureInfo.InvariantCulture)));
 }
 
 internal sealed partial record NestestLogState(
@@ -685,6 +844,17 @@ internal readonly record struct RenderFrameResult(
     ulong TargetFrame,
     long Instructions,
     bool Completed);
+
+internal readonly record struct MachineFrameResult(
+    NesMachine Machine,
+    ulong TargetFrame,
+    long Instructions,
+    bool Completed);
+
+internal readonly record struct FrameScanResult(
+    ulong Frame,
+    long Instructions,
+    FrameDiffResult Diff);
 
 internal sealed class FrameInputScript
 {
