@@ -899,7 +899,7 @@ public sealed class PpuBus
             return;
         }
 
-        if (GetBackgroundPixel(x, y) == 0 || GetSpriteZeroPixel(x, y) == 0)
+        if (GetBackgroundPixelForSpriteZeroHit(x, y) == 0 || GetSpriteZeroPixel(x, y) == 0)
         {
             return;
         }
@@ -957,6 +957,25 @@ public sealed class PpuBus
         return GetBackgroundPixelWithPalette(x, y).Color;
     }
 
+    private int GetBackgroundPixelForSpriteZeroHit(int x, int y)
+    {
+        if (!IsBackgroundEnabled || (x < 8 && !ShowBackgroundInLeftColumn))
+        {
+            return 0;
+        }
+
+        if (backgroundShiftRegister.IsValid &&
+            (renderBackgroundFromCurrentVramAddress ||
+                backgroundShiftRegister.RenderAddress == (currentVramAddress & 0x7FFF)))
+        {
+            return GetBackgroundPixelFromShiftRegister().Color;
+        }
+
+        return renderBackgroundFromCurrentVramAddress
+            ? 0
+            : GetBackgroundPixelFromScrollCoordinates(x, y).Color;
+    }
+
     private PpuPixel GetBackgroundPixelWithPalette(int x, int y)
     {
         if (!IsBackgroundEnabled || (x < 8 && !ShowBackgroundInLeftColumn))
@@ -964,9 +983,7 @@ public sealed class PpuBus
             return PpuPixel.Transparent;
         }
 
-        if (backgroundShiftRegister.IsValid &&
-            (renderBackgroundFromCurrentVramAddress ||
-                backgroundShiftRegister.RenderAddress == (currentVramAddress & 0x7FFF)))
+        if (IsBackgroundShiftRegisterAligned())
         {
             return GetBackgroundPixelFromShiftRegister();
         }
@@ -974,6 +991,25 @@ public sealed class PpuBus
         return renderBackgroundFromCurrentVramAddress
             ? PpuPixel.Transparent
             : GetBackgroundPixelFromScrollCoordinates(x, y);
+    }
+
+    private bool IsBackgroundShiftRegisterAligned()
+    {
+        if (!backgroundShiftRegister.IsValid)
+        {
+            return false;
+        }
+
+        if (renderBackgroundFromCurrentVramAddress)
+        {
+            return true;
+        }
+
+        var current = (ushort)(currentVramAddress & 0x7FFF);
+        var render = backgroundShiftRegister.RenderAddress;
+        return render == current ||
+            OffsetBackgroundAddress(render, 1) == current ||
+            OffsetBackgroundAddress(render, 2) == current;
     }
 
     private PpuPixel GetBackgroundPixelFromShiftRegister()
