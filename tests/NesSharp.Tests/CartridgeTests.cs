@@ -238,8 +238,8 @@ public sealed class CartridgeTests
     }
 
     [Theory]
-    [InlineData(0, MirroringMode.Horizontal)]
-    [InlineData(1, MirroringMode.Vertical)]
+    [InlineData(0, MirroringMode.Vertical)]
+    [InlineData(1, MirroringMode.Horizontal)]
     public void Mapper4SwitchesMirroring(byte value, MirroringMode expected)
     {
         var rom = CreateRom(prgBanks: 2, chrBanks: 1, mapper: 4);

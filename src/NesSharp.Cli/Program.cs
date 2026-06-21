@@ -28,6 +28,7 @@ try
         "scan-frame-match" => ScanFrameMatch(args),
         "sample-frames" => SampleFrames(args),
         "diagnose-frame" => DiagnoseFrame(args),
+        "trace-writes" => TraceWrites(args),
         _ => UnknownCommand(args[0])
     };
 }
@@ -93,6 +94,8 @@ static void PrintUsage()
     Console.WriteLine("                   Print framebuffer hashes and palette histograms at frame intervals.");
     Console.WriteLine("  diagnose-frame <rom.nes> [--frames 1] [--input \"60-90:Start\"]");
     Console.WriteLine("                   Print PPU and mapper state after running to a frame.");
+    Console.WriteLine("  trace-writes <rom.nes> [--frames 1] [--start-frame N] [--scanline-start N] [--scanline-end N]");
+    Console.WriteLine("                   Print PPU register and mapper writes with PPU timing.");
 }
 
 static int RunTestRom(string[] args)
@@ -374,6 +377,103 @@ static int DiagnoseFrame(string[] args)
 
     PrintFrameDiagnosis(result);
     return 0;
+}
+
+static int TraceWrites(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.Error.WriteLine("Usage: NesSharp.Cli trace-writes <rom.nes> [--frames 1] [--start-frame N] [--scanline-start N] [--scanline-end N] [--input \"60-90:Start\"] [--max-instructions 50000000]");
+        return 1;
+    }
+
+    var endFrame = (ulong)GetIntOption(args, "--end-frame", GetIntOption(args, "--frames", 1));
+    var startFrame = (ulong)GetIntOption(args, "--start-frame", (int)endFrame);
+    if (startFrame > endFrame)
+    {
+        Console.Error.WriteLine("--start-frame must be less than or equal to --end-frame.");
+        return 1;
+    }
+
+    var scanlineStart = GetIntOption(args, "--scanline-start", int.MinValue);
+    var scanlineEnd = GetIntOption(args, "--scanline-end", int.MaxValue);
+    var maxInstructions = GetLongOption(args, "--max-instructions", 50_000_000);
+    var inputScript = FrameInputScript.Parse(GetOption(args, "--input"));
+    var machine = NesMachine.LoadFile(args[1]);
+    machine.Reset();
+    var tracedWrites = 0;
+
+    machine.CpuBus.WriteObserved += entry =>
+    {
+        if (entry.PpuFrame < startFrame ||
+            entry.PpuFrame > endFrame ||
+            entry.PpuScanline < scanlineStart ||
+            entry.PpuScanline > scanlineEnd ||
+            !ShouldTraceWrite(entry.Address))
+        {
+            return;
+        }
+
+        tracedWrites++;
+        Console.WriteLine(FormatWriteTrace(entry, machine.Cartridge.Mapper));
+    };
+
+    long instructions = 0;
+    var targetFrame = endFrame + 1;
+    while (machine.PpuBus.Frame < targetFrame && instructions < maxInstructions)
+    {
+        machine.Controller1.State = inputScript.GetState(machine.PpuBus.Frame);
+        machine.StepInstruction();
+        instructions++;
+    }
+
+    Console.WriteLine($"Traced writes: {tracedWrites}");
+    Console.WriteLine($"Instructions: {instructions}");
+    Console.WriteLine($"Frame reached: {machine.PpuBus.Frame} (target {targetFrame})");
+    return machine.PpuBus.Frame >= targetFrame ? 0 : 1;
+}
+
+static bool ShouldTraceWrite(ushort address)
+{
+    return address is >= 0x2000 and <= 0x3FFF or 0x4014 or >= 0x8000;
+}
+
+static string FormatWriteTrace(CpuBusWriteDebugEntry entry, IMapper mapper)
+{
+    var register = entry.Address is >= 0x2000 and <= 0x3FFF
+        ? $"PPU${0x2000 + (entry.Address & 0x0007):X4}"
+        : entry.Address == 0x4014
+            ? "OAMDMA"
+            : GetMapperWriteName(entry.Address);
+    var line = string.Create(
+        CultureInfo.InvariantCulture,
+        $"F{entry.PpuFrame,4} SL{entry.PpuScanline,3} D{entry.PpuDot,3} ${entry.Address:X4}<-${entry.Value:X2} {register} ctrl=${entry.PpuControl:X2} mask=${entry.PpuMask:X2} v=${entry.CurrentVramAddress:X4} t=${entry.TemporaryVramAddress:X4} x={entry.FineX} scroll=({entry.ScrollX},{entry.ScrollY}) w={entry.WriteToggle}");
+
+    if (mapper is not Mapper4 mapper4 || entry.Address < 0x8000)
+    {
+        return line;
+    }
+
+    var state = mapper4.CaptureDebugState();
+    return string.Create(
+        CultureInfo.InvariantCulture,
+        $"{line} bankSelect=${state.BankSelect:X2} regs={FormatBytes(state.BankRegisters)} chr={FormatInts(state.ChrBanks)} irq(l=${state.IrqLatch:X2},c=${state.IrqCounter:X2},r={state.IrqReload},e={state.IrqEnabled},p={state.IrqPending})");
+}
+
+static string GetMapperWriteName(ushort address)
+{
+    return (address & 0xE001) switch
+    {
+        0x8000 => "MMC3 bank select",
+        0x8001 => "MMC3 bank data",
+        0xA000 => "MMC3 mirroring",
+        0xA001 => "MMC3 PRG RAM",
+        0xC000 => "MMC3 IRQ latch",
+        0xC001 => "MMC3 IRQ reload",
+        0xE000 => "MMC3 IRQ disable",
+        0xE001 => "MMC3 IRQ enable",
+        _ => "Mapper write"
+    };
 }
 
 static MachineFrameResult RunMachineToFrame(string romPath, string[] args)

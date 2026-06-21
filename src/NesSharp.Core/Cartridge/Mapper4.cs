@@ -114,7 +114,7 @@ public sealed class Mapper4 : IMapper
                 bankRegisters[bankSelect & 0x07] = value;
                 break;
             case 0xA000:
-                mirroringMode = (value & 0x01) == 0 ? MirroringMode.Horizontal : MirroringMode.Vertical;
+                mirroringMode = (value & 0x01) == 0 ? MirroringMode.Vertical : MirroringMode.Horizontal;
                 break;
             case 0xA001:
                 prgRamEnabled = (value & 0x80) != 0;

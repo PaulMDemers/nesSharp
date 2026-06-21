@@ -42,6 +42,8 @@ public sealed class CpuBus
 
     public int InstructionAccessCycles => instructionAccessCycles;
 
+    public event Action<CpuBusWriteDebugEntry>? WriteObserved;
+
     public void SetCpuCycleCallback(Action callback)
     {
         cpuCycleElapsed = callback;
@@ -162,6 +164,25 @@ public sealed class CpuBus
             case >= 0x4020:
                 Cartridge.CpuWrite(address, value);
                 break;
+        }
+
+        if (WriteObserved is not null)
+        {
+            var ppu = ppuBus.CaptureDebugState();
+            WriteObserved(new CpuBusWriteDebugEntry(
+                address,
+                value,
+                ppu.Frame,
+                ppu.Scanline,
+                ppu.Dot,
+                ppu.Control,
+                ppu.Mask,
+                ppu.CurrentVramAddress,
+                ppu.TemporaryVramAddress,
+                ppu.FineX,
+                ppu.ScrollX,
+                ppu.ScrollY,
+                ppu.WriteToggle));
         }
     }
 
@@ -370,3 +391,18 @@ public sealed class CpuBus
         ClockCpuAccess(instructionAccess: false);
     }
 }
+
+public readonly record struct CpuBusWriteDebugEntry(
+    ushort Address,
+    byte Value,
+    ulong PpuFrame,
+    int PpuScanline,
+    int PpuDot,
+    byte PpuControl,
+    byte PpuMask,
+    ushort CurrentVramAddress,
+    ushort TemporaryVramAddress,
+    byte FineX,
+    int ScrollX,
+    int ScrollY,
+    bool WriteToggle);
