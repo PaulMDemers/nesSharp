@@ -21,7 +21,7 @@ dotnet run --project src\NesSharp.Cli -- diagnose-frame "roms\USA\Super Mario Br
 dotnet run --project src\NesSharp.Desktop -- test-roms\nes-test-roms\ppu_read_buffer\test_ppu_read_buffer.nes
 ```
 
-Desktop controller 1 mapping: `Z` = A, `X` = B, `Backspace` = Select, `Enter` = Start, arrow keys = D-pad. Use `Ctrl+R` for reset and `Ctrl+Shift+R` for power cycle.
+Desktop controller 1 mapping: `Z` = A, `X` = B, `Backspace` = Select, `Enter` = Start, arrow keys = D-pad. Use `Ctrl+R` for reset, `Ctrl+Shift+R` for power cycle, and `Ctrl+D` to capture the current frame plus PPU/OAM/Mapper 4 diagnostics under `artifacts\desktop-captures`.
 Battery-backed saves are loaded from and written to a `.sav` file beside the ROM in the desktop host.
 
 `render-frame` and `compare-frame` support 256x240 binary PPM (`P6`) and uncompressed 24-bit BMP files. MAME snapshots are commonly PNG files; convert those to BMP or PPM first, then compare the converted reference against nesSharp's rendered frame.
@@ -72,6 +72,7 @@ For local reference captures, MAME 0.288 can be installed under `tools\mame-0.28
 - Counts DMC DMA no-op cycles when repeating side-effect reads for `$2002`, `$2007`, and `$4015`.
 - Produces a drainable mono APU sample buffer using channel timer clocks and the NES nonlinear mixer formula.
 - Includes an initial WinForms desktop host with framebuffer display, audio playback, ROM loading, reset/pause actions, and keyboard input for controller 1.
+- Captures desktop diagnostics with a BMP frame dump and text state dump for exact-frame compatibility debugging.
 - Runs desktop emulation on a background frame loop with UI-thread framebuffer presentation.
 - Includes a desktop power-cycle command that rebuilds mapper/machine state while preserving battery-backed save data.
 - Passes all `ppu_vbl_nmi` ROM singles, `01-vbl_basics` through `10-even_odd_timing`.

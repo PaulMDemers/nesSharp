@@ -1,7 +1,11 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
+using System.Text;
 using NesSharp.Core.Cartridge;
 using NesSharp.Core.Input;
+using NesSharp.Core.Ppu;
 using NesSharp.Core.Runtime;
 
 namespace NesSharp.Desktop;
@@ -16,6 +20,7 @@ internal sealed class EmulatorForm : Form
     private readonly ToolStripMenuItem resetMenuItem = new("&Reset");
     private readonly ToolStripMenuItem powerCycleMenuItem = new("&Power Cycle");
     private readonly ToolStripMenuItem pauseMenuItem = new("&Pause") { CheckOnClick = true };
+    private readonly ToolStripMenuItem captureDiagnosticsMenuItem = new("&Capture Diagnostics");
     private readonly Lock machineLock = new();
     private readonly WaveOutAudioPlayer audioPlayer = new();
 
@@ -131,6 +136,8 @@ internal sealed class EmulatorForm : Form
         resetMenuItem.Click += (_, _) => ResetMachine();
         powerCycleMenuItem.ShortcutKeys = Keys.Control | Keys.Shift | Keys.R;
         powerCycleMenuItem.Click += (_, _) => PowerCycleMachine();
+        captureDiagnosticsMenuItem.ShortcutKeys = Keys.Control | Keys.D;
+        captureDiagnosticsMenuItem.Click += (_, _) => CaptureDiagnostics();
         pauseMenuItem.ShortcutKeyDisplayString = "Space";
         pauseMenuItem.CheckedChanged += (_, _) =>
         {
@@ -155,6 +162,7 @@ internal sealed class EmulatorForm : Form
 
         var emulationMenu = new ToolStripMenuItem("&Emulation");
         emulationMenu.DropDownItems.Add(pauseMenuItem);
+        emulationMenu.DropDownItems.Add(captureDiagnosticsMenuItem);
 
         var menuStrip = new MenuStrip();
         menuStrip.Items.Add(fileMenu);
@@ -439,6 +447,7 @@ internal sealed class EmulatorForm : Form
         resetMenuItem.Enabled = hasRom;
         powerCycleMenuItem.Enabled = hasRom;
         pauseMenuItem.Enabled = hasRom;
+        captureDiagnosticsMenuItem.Enabled = hasRom;
 
         if (!hasRom)
         {
@@ -505,6 +514,169 @@ internal sealed class EmulatorForm : Form
         {
             statusLabel.Text = $"Could not write save file: {ex.Message}";
         }
+    }
+
+    private void CaptureDiagnostics()
+    {
+        byte[] framebuffer;
+        PpuDebugState ppu;
+        Mapper4DebugState? mapper4 = null;
+        string? loadedRomPath;
+
+        lock (machineLock)
+        {
+            if (machine is null)
+            {
+                return;
+            }
+
+            framebuffer = machine.PpuBus.Framebuffer.ToArray();
+            ppu = machine.PpuBus.CaptureDebugState();
+            if (machine.Cartridge.Mapper is Mapper4 mapper)
+            {
+                mapper4 = mapper.CaptureDebugState();
+            }
+
+            loadedRomPath = romPath;
+        }
+
+        try
+        {
+            var captureDirectory = GetCaptureDirectory();
+            Directory.CreateDirectory(captureDirectory);
+
+            var romName = Path.GetFileNameWithoutExtension(loadedRomPath) ?? "rom";
+            var safeRomName = string.Join("_", romName.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
+            var prefix = $"{safeRomName}_frame{ppu.Frame:D6}";
+            var imagePath = Path.Combine(captureDirectory, $"{prefix}.bmp");
+            var textPath = Path.Combine(captureDirectory, $"{prefix}.txt");
+
+            WriteFrameBitmap(imagePath, framebuffer);
+            File.WriteAllText(textPath, BuildDiagnosticText(loadedRomPath, ppu, mapper4), Encoding.UTF8);
+            statusLabel.Text = $"Captured diagnostics: {Path.GetFileName(imagePath)}";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ExternalException)
+        {
+            statusLabel.Text = $"Could not capture diagnostics: {ex.Message}";
+        }
+    }
+
+    private static string GetCaptureDirectory()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "NesSharp.slnx")))
+            {
+                return Path.Combine(directory.FullName, "artifacts", "desktop-captures");
+            }
+
+            directory = directory.Parent;
+        }
+
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            "nesSharp-captures");
+    }
+
+    private static void WriteFrameBitmap(string path, ReadOnlySpan<byte> framebuffer)
+    {
+        using var bitmap = new Bitmap(NesDisplayControl.NesWidth, NesDisplayControl.NesHeight, PixelFormat.Format24bppRgb);
+        var bounds = new Rectangle(0, 0, NesDisplayControl.NesWidth, NesDisplayControl.NesHeight);
+        var data = bitmap.LockBits(bounds, ImageLockMode.WriteOnly, PixelFormat.Format24bppRgb);
+        try
+        {
+            var stride = data.Stride;
+            var bytes = new byte[stride * NesDisplayControl.NesHeight];
+            for (var y = 0; y < NesDisplayControl.NesHeight; y++)
+            {
+                for (var x = 0; x < NesDisplayControl.NesWidth; x++)
+                {
+                    var color = NesPalette.GetRgb(framebuffer[y * NesDisplayControl.NesWidth + x]);
+                    var offset = y * stride + x * 3;
+                    bytes[offset] = color.B;
+                    bytes[offset + 1] = color.G;
+                    bytes[offset + 2] = color.R;
+                }
+            }
+
+            System.Runtime.InteropServices.Marshal.Copy(bytes, 0, data.Scan0, bytes.Length);
+        }
+        finally
+        {
+            bitmap.UnlockBits(data);
+        }
+
+        bitmap.Save(path, ImageFormat.Bmp);
+    }
+
+    private static string BuildDiagnosticText(string? loadedRomPath, PpuDebugState ppu, Mapper4DebugState? mapper4)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine($"ROM: {loadedRomPath ?? "<none>"}");
+        builder.AppendLine($"Frame: {ppu.Frame}");
+        builder.AppendLine($"PPU: scanline {ppu.Scanline}, dot {ppu.Dot}, total dots {ppu.TotalDots}");
+        builder.AppendLine($"PPUCTRL: ${ppu.Control:X2}  PPUMASK: ${ppu.Mask:X2}  PPUSTATUS: ${ppu.Status:X2}");
+        builder.AppendLine($"Effective mask: ${ppu.EffectiveMask:X2}  Pending mask: ${ppu.PendingMask:X2}  Pending mask delay: {ppu.PendingMaskDelayDots}");
+        builder.AppendLine($"Rendering: enabled={ppu.IsRenderingEnabled}, bg={ppu.IsBackgroundEnabled}, sprites={ppu.IsSpriteRenderingEnabled}, left bg={ppu.ShowBackgroundInLeftColumn}, left sprites={ppu.ShowSpritesInLeftColumn}");
+        builder.AppendLine($"Scroll: x={ppu.ScrollX}, y={ppu.ScrollY}, fineX={ppu.FineX}, writeToggle={ppu.WriteToggle}");
+        builder.AppendLine($"VRAM: current=${ppu.CurrentVramAddress:X4}, temporary=${ppu.TemporaryVramAddress:X4}, readBuffer=${ppu.ReadBuffer:X2}");
+        builder.AppendLine($"OAM: address=${ppu.OamAddress:X2}, scanline sprite y={ppu.ScanlineSpriteY}, scanline sprite count={ppu.ScanlineSpriteCount}");
+        builder.AppendLine($"Palette RAM: {FormatBytes(ppu.PaletteRam)}");
+        builder.AppendLine($"Nametable $2000 sample: {FormatBytes(ppu.NametableSample)}");
+        builder.AppendLine($"OAM sprites 0-63: {FormatOamSprites(ppu.Oam, maxSprites: 64)}");
+        builder.AppendLine($"Latched scanline sprites: {FormatLatchedSprites(ppu.ScanlineSprites)}");
+        builder.AppendLine($"Background fetch: valid={ppu.BackgroundFetchValid}, render=${ppu.BackgroundFetchRenderAddress:X4}, tile=${ppu.BackgroundFetchTileIndex:X2}, attr={ppu.BackgroundFetchAttributePalette}, pattern=${ppu.BackgroundFetchPatternAddress:X4}, low=${ppu.BackgroundFetchPatternLow:X2}, high=${ppu.BackgroundFetchPatternHigh:X2}");
+        builder.AppendLine($"Background shift: valid={ppu.BackgroundShiftValid}, render=${ppu.BackgroundShiftRenderAddress:X4}, next=${ppu.BackgroundShiftNextRenderAddress:X4}, patternLow=${ppu.BackgroundShiftPatternLow:X4}, patternHigh=${ppu.BackgroundShiftPatternHigh:X4}, attrLow=${ppu.BackgroundShiftAttributeLow:X4}, attrHigh=${ppu.BackgroundShiftAttributeHigh:X4}");
+
+        if (mapper4 is not null)
+        {
+            var mapper = mapper4.Value;
+            builder.AppendLine("Mapper 4:");
+            builder.AppendLine($"  bankSelect=${mapper.BankSelect:X2}, PRG inverted={mapper.IsPrgBankModeInverted}, CHR inverted={mapper.IsChrBankModeInverted}, mirroring={mapper.MirroringMode}");
+            builder.AppendLine($"  bank registers: {FormatBytes(mapper.BankRegisters)}");
+            builder.AppendLine($"  PRG 8K banks @8000/A000/C000/E000: {FormatInts(mapper.PrgBanks)}");
+            builder.AppendLine($"  CHR 1K banks @0000..1C00: {FormatInts(mapper.ChrBanks)}");
+            builder.AppendLine($"  IRQ latch=${mapper.IrqLatch:X2}, counter=${mapper.IrqCounter:X2}, reload={mapper.IrqReload}, enabled={mapper.IrqEnabled}, pending={mapper.IrqPending}, A12 high={mapper.PpuA12High}");
+            builder.AppendLine($"  PRG RAM enabled={mapper.PrgRamEnabled}, writeProtected={mapper.PrgRamWriteProtected}");
+        }
+
+        return builder.ToString();
+    }
+
+    private static string FormatBytes(IReadOnlyList<byte> values)
+    {
+        return string.Join(" ", values.Select(value => $"${value:X2}"));
+    }
+
+    private static string FormatInts(IReadOnlyList<int> values)
+    {
+        return string.Join(" ", values.Select(value => value.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+    }
+
+    private static string FormatOamSprites(IReadOnlyList<byte> oam, int maxSprites)
+    {
+        var parts = new string[Math.Min(maxSprites, oam.Count / 4)];
+        for (var i = 0; i < parts.Length; i++)
+        {
+            var offset = i * 4;
+            parts[i] = $"#{i:D2}(y=${oam[offset]:X2},tile=${oam[offset + 1]:X2},attr=${oam[offset + 2]:X2},x=${oam[offset + 3]:X2})";
+        }
+
+        return string.Join(" ", parts);
+    }
+
+    private static string FormatLatchedSprites(IReadOnlyList<SpriteDebugEntry> sprites)
+    {
+        if (sprites.Count == 0)
+        {
+            return "<none>";
+        }
+
+        return string.Join(
+            " ",
+            sprites.Select(sprite =>
+                $"#{sprite.SpriteIndex:D2}(x=${sprite.X:X2},attr=${sprite.Attributes:X2},lo=${sprite.PatternLow:X2},hi=${sprite.PatternHigh:X2})"));
     }
 
     private bool SetControllerButton(Keys key, bool pressed)
