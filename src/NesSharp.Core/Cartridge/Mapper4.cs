@@ -139,7 +139,6 @@ public sealed class Mapper4 : IMapper
 
     public byte PpuRead(ushort address)
     {
-        NotifyPpuAddress(address, 0);
         return PpuPeek(address);
     }
 
@@ -155,7 +154,6 @@ public sealed class Mapper4 : IMapper
 
     public void PpuWrite(ushort address, byte value)
     {
-        NotifyPpuAddress(address, 0);
         if (address > 0x1FFF || !header.UsesChrRam)
         {
             return;

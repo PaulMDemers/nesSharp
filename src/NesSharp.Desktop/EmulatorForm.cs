@@ -680,6 +680,8 @@ internal sealed class EmulatorForm : Form
         builder.AppendLine($"Latched scanline sprites: {FormatLatchedSprites(ppu.ScanlineSprites)}");
         builder.AppendLine($"Background fetch: valid={ppu.BackgroundFetchValid}, render=${ppu.BackgroundFetchRenderAddress:X4}, tile=${ppu.BackgroundFetchTileIndex:X2}, attr={ppu.BackgroundFetchAttributePalette}, pattern=${ppu.BackgroundFetchPatternAddress:X4}, low=${ppu.BackgroundFetchPatternLow:X2}, high=${ppu.BackgroundFetchPatternHigh:X2}");
         builder.AppendLine($"Background shift: valid={ppu.BackgroundShiftValid}, render=${ppu.BackgroundShiftRenderAddress:X4}, next=${ppu.BackgroundShiftNextRenderAddress:X4}, patternLow=${ppu.BackgroundShiftPatternLow:X4}, patternHigh=${ppu.BackgroundShiftPatternHigh:X4}, attrLow=${ppu.BackgroundShiftAttributeLow:X4}, attrHigh=${ppu.BackgroundShiftAttributeHigh:X4}");
+        builder.AppendLine($"Last frame background sources: shift={ppu.LastFrameBackgroundShiftPixels}, fallback={ppu.LastFrameBackgroundFallbackPixels}, current-address-transparent={ppu.LastFrameBackgroundCurrentAddressTransparentPixels}");
+        builder.AppendLine($"Last frame HUD sources y192-239: shift={FormatScanlineBands(ppu.LastFrameBackgroundShiftPixelsByScanline, 192, 239)}, fallback={FormatScanlineBands(ppu.LastFrameBackgroundFallbackPixelsByScanline, 192, 239)}, current-address-transparent={FormatScanlineBands(ppu.LastFrameBackgroundCurrentAddressTransparentPixelsByScanline, 192, 239)}");
 
         if (mapper4 is not null)
         {
@@ -704,6 +706,25 @@ internal sealed class EmulatorForm : Form
     private static string FormatInts(IReadOnlyList<int> values)
     {
         return string.Join(" ", values.Select(value => value.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+    }
+
+    private static string FormatScanlineBands(IReadOnlyList<int> values, int firstScanline, int lastScanline)
+    {
+        const int bandHeight = 8;
+        var bands = new List<string>();
+        for (var y = firstScanline; y <= lastScanline; y += bandHeight)
+        {
+            var end = Math.Min(y + bandHeight - 1, lastScanline);
+            var total = 0;
+            for (var scanline = y; scanline <= end && scanline < values.Count; scanline++)
+            {
+                total += values[scanline];
+            }
+
+            bands.Add($"{y}-{end}:{total}");
+        }
+
+        return string.Join(" ", bands);
     }
 
     private static string FormatOamSprites(IReadOnlyList<byte> oam, int maxSprites)

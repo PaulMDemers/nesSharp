@@ -21,6 +21,12 @@ public sealed class PpuBus
     private readonly byte[] framebuffer = new byte[ScreenWidth * ScreenHeight];
     private readonly byte[] registers = new byte[8];
     private readonly SpriteRenderEntry[] scanlineSprites = new SpriteRenderEntry[8];
+    private readonly int[] backgroundShiftPixelsByScanline = new int[ScreenHeight];
+    private readonly int[] backgroundFallbackPixelsByScanline = new int[ScreenHeight];
+    private readonly int[] backgroundCurrentAddressTransparentPixelsByScanline = new int[ScreenHeight];
+    private readonly int[] lastBackgroundShiftPixelsByScanline = new int[ScreenHeight];
+    private readonly int[] lastBackgroundFallbackPixelsByScanline = new int[ScreenHeight];
+    private readonly int[] lastBackgroundCurrentAddressTransparentPixelsByScanline = new int[ScreenHeight];
     private byte effectiveMask;
     private byte pendingMask;
     private int pendingMaskDelayDots;
@@ -45,6 +51,9 @@ public sealed class PpuBus
     private int scanlineSpriteY = -1;
     private int scanlineSpriteCount;
     private ulong vblankSetTotalDots;
+    private int lastBackgroundShiftPixels;
+    private int lastBackgroundFallbackPixels;
+    private int lastBackgroundCurrentAddressTransparentPixels;
 
     public PpuBus(Cartridge.Cartridge cartridge)
     {
@@ -113,6 +122,12 @@ public sealed class PpuBus
             backgroundShiftRegister.PatternHigh,
             backgroundShiftRegister.AttributeLow,
             backgroundShiftRegister.AttributeHigh,
+            lastBackgroundShiftPixels,
+            lastBackgroundFallbackPixels,
+            lastBackgroundCurrentAddressTransparentPixels,
+            lastBackgroundShiftPixelsByScanline.ToArray(),
+            lastBackgroundFallbackPixelsByScanline.ToArray(),
+            lastBackgroundCurrentAddressTransparentPixelsByScanline.ToArray(),
             scanlineSpriteY,
             scanlineSpriteCount,
             palette,
@@ -239,6 +254,15 @@ public sealed class PpuBus
         scanlineSpriteY = -1;
         scanlineSpriteCount = 0;
         vblankSetTotalDots = 0;
+        lastBackgroundShiftPixels = 0;
+        lastBackgroundFallbackPixels = 0;
+        lastBackgroundCurrentAddressTransparentPixels = 0;
+        Array.Clear(backgroundShiftPixelsByScanline);
+        Array.Clear(backgroundFallbackPixelsByScanline);
+        Array.Clear(backgroundCurrentAddressTransparentPixelsByScanline);
+        Array.Clear(lastBackgroundShiftPixelsByScanline);
+        Array.Clear(lastBackgroundFallbackPixelsByScanline);
+        Array.Clear(lastBackgroundCurrentAddressTransparentPixelsByScanline);
     }
 
     public void Clock(int ppuCycles)
@@ -252,7 +276,7 @@ public sealed class PpuBus
                 TotalDots++;
                 Dot = 0;
                 Scanline = 0;
-                Frame++;
+                CompleteFrame();
                 TickMaskDelay();
                 continue;
             }
@@ -266,7 +290,7 @@ public sealed class PpuBus
                 if (Scanline >= ScanlinesPerFrame)
                 {
                     Scanline = 0;
-                    Frame++;
+                    CompleteFrame();
                 }
             }
 
@@ -486,7 +510,7 @@ public sealed class PpuBus
         return true;
     }
 
-    public byte ReadPatternTable(ushort address) => cartridge.PpuRead(address);
+    public byte ReadPatternTable(ushort address) => cartridge.PpuPeek(address);
 
     public void WritePatternTable(ushort address, byte value) => cartridge.PpuWrite(address, value);
 
@@ -596,6 +620,32 @@ public sealed class PpuBus
         {
             effectiveMask = pendingMask;
         }
+    }
+
+    private void CompleteFrame()
+    {
+        lastBackgroundShiftPixels = CopyAndSum(backgroundShiftPixelsByScanline, lastBackgroundShiftPixelsByScanline);
+        lastBackgroundFallbackPixels = CopyAndSum(backgroundFallbackPixelsByScanline, lastBackgroundFallbackPixelsByScanline);
+        lastBackgroundCurrentAddressTransparentPixels = CopyAndSum(
+            backgroundCurrentAddressTransparentPixelsByScanline,
+            lastBackgroundCurrentAddressTransparentPixelsByScanline);
+        Array.Clear(backgroundShiftPixelsByScanline);
+        Array.Clear(backgroundFallbackPixelsByScanline);
+        Array.Clear(backgroundCurrentAddressTransparentPixelsByScanline);
+        Frame++;
+    }
+
+    private static int CopyAndSum(int[] source, int[] destination)
+    {
+        var sum = 0;
+        for (var i = 0; i < source.Length; i++)
+        {
+            var value = source[i];
+            destination[i] = value;
+            sum += value;
+        }
+
+        return sum;
     }
 
     private void UpdateRenderingVramAddress()
@@ -714,7 +764,7 @@ public sealed class PpuBus
             scrollX = value;
             temporaryVramAddress = (ushort)((temporaryVramAddress & 0x7FE0) | (value >> 3));
             renderBackgroundFromCurrentVramAddress = false;
-            backgroundShiftRegister = default;
+            ClearBackgroundShiftRegisterIfNotActivelyRendering();
             writeToggle = true;
             return;
         }
@@ -722,7 +772,7 @@ public sealed class PpuBus
         scrollY = value;
         temporaryVramAddress = (ushort)((temporaryVramAddress & 0x0C1F) | ((value & 0x07) << 12) | ((value & 0xF8) << 2));
         renderBackgroundFromCurrentVramAddress = false;
-        backgroundShiftRegister = default;
+        ClearBackgroundShiftRegisterIfNotActivelyRendering();
         writeToggle = false;
     }
 
@@ -739,13 +789,21 @@ public sealed class PpuBus
         currentVramAddress = temporaryVramAddress;
         cartridge.NotifyPpuAddress(currentVramAddress, TotalDots);
         renderBackgroundFromCurrentVramAddress = currentVramAddress < 0x2000;
-        backgroundShiftRegister = default;
+        ClearBackgroundShiftRegisterIfNotActivelyRendering();
         if (renderBackgroundFromCurrentVramAddress && ShouldPrimeBackgroundShiftRegister())
         {
             PrimeBackgroundShiftRegister(currentVramAddress);
         }
 
         writeToggle = false;
+    }
+
+    private void ClearBackgroundShiftRegisterIfNotActivelyRendering()
+    {
+        if (!IsRenderingEnabled || !IsRenderingScanline)
+        {
+            backgroundShiftRegister = default;
+        }
     }
 
     private bool ShouldPrimeBackgroundShiftRegister()
@@ -785,7 +843,7 @@ public sealed class PpuBus
         address = NormalizePpuAddress(address);
         return address switch
         {
-            <= 0x1FFF => cartridge.PpuRead(address),
+            <= 0x1FFF => cartridge.PpuRead(address, TotalDots),
             >= 0x2000 and <= 0x2FFF => nametableRam[MapNametableAddress(address)],
             >= 0x3F00 and <= 0x3FFF => paletteRam[MapPaletteAddress(address)],
             _ => 0
@@ -798,7 +856,7 @@ public sealed class PpuBus
         switch (address)
         {
             case <= 0x1FFF:
-                cartridge.PpuWrite(address, value);
+                cartridge.PpuWrite(address, value, TotalDots);
                 break;
             case >= 0x2000 and <= 0x2FFF:
                 nametableRam[MapNametableAddress(address)] = value;
@@ -985,12 +1043,42 @@ public sealed class PpuBus
 
         if (IsBackgroundShiftRegisterAligned())
         {
+            CountBackgroundShiftPixel(y);
             return GetBackgroundPixelFromShiftRegister();
         }
 
-        return renderBackgroundFromCurrentVramAddress
-            ? PpuPixel.Transparent
-            : GetBackgroundPixelFromScrollCoordinates(x, y);
+        if (renderBackgroundFromCurrentVramAddress)
+        {
+            CountBackgroundCurrentAddressTransparentPixel(y);
+            return PpuPixel.Transparent;
+        }
+
+        CountBackgroundFallbackPixel(y);
+        return GetBackgroundPixelFromScrollCoordinates(x, y);
+    }
+
+    private void CountBackgroundShiftPixel(int y)
+    {
+        if (y is >= 0 and < ScreenHeight)
+        {
+            backgroundShiftPixelsByScanline[y]++;
+        }
+    }
+
+    private void CountBackgroundFallbackPixel(int y)
+    {
+        if (y is >= 0 and < ScreenHeight)
+        {
+            backgroundFallbackPixelsByScanline[y]++;
+        }
+    }
+
+    private void CountBackgroundCurrentAddressTransparentPixel(int y)
+    {
+        if (y is >= 0 and < ScreenHeight)
+        {
+            backgroundCurrentAddressTransparentPixelsByScanline[y]++;
+        }
     }
 
     private bool IsBackgroundShiftRegisterAligned()
@@ -1052,12 +1140,12 @@ public sealed class PpuBus
 
     private byte FetchBackgroundPatternLow(ushort patternAddress)
     {
-        return cartridge.PpuRead(patternAddress);
+        return cartridge.PpuRead(patternAddress, TotalDots);
     }
 
     private byte FetchBackgroundPatternHigh(ushort patternAddress)
     {
-        return cartridge.PpuRead((ushort)(patternAddress + 8));
+        return cartridge.PpuRead((ushort)(patternAddress + 8), TotalDots);
     }
 
     private PpuPixel GetBackgroundPixelFromScrollCoordinates(int x, int y)
@@ -1075,8 +1163,8 @@ public sealed class PpuBus
         var tileIndex = ReadMemory(nametableAddress);
         var patternBase = (registers[0] & 0x10) == 0 ? 0x0000 : 0x1000;
         var patternAddress = (ushort)(patternBase + tileIndex * 16 + fineY);
-        var low = cartridge.PpuRead(patternAddress);
-        var high = cartridge.PpuRead((ushort)(patternAddress + 8));
+        var low = cartridge.PpuPeek(patternAddress);
+        var high = cartridge.PpuPeek((ushort)(patternAddress + 8));
         var bit = 7 - (scrolledX & 0x07);
         var color = ((low >> bit) & 0x01) | (((high >> bit) & 0x01) << 1);
         if (color == 0)
@@ -1419,6 +1507,12 @@ public readonly record struct PpuDebugState(
     ushort BackgroundShiftPatternHigh,
     ushort BackgroundShiftAttributeLow,
     ushort BackgroundShiftAttributeHigh,
+    int LastFrameBackgroundShiftPixels,
+    int LastFrameBackgroundFallbackPixels,
+    int LastFrameBackgroundCurrentAddressTransparentPixels,
+    int[] LastFrameBackgroundShiftPixelsByScanline,
+    int[] LastFrameBackgroundFallbackPixelsByScanline,
+    int[] LastFrameBackgroundCurrentAddressTransparentPixelsByScanline,
     int ScanlineSpriteY,
     int ScanlineSpriteCount,
     byte[] PaletteRam,

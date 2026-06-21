@@ -32,11 +32,33 @@ public sealed class Cartridge
 
     public void CpuWrite(ushort address, byte value) => Mapper.CpuWrite(address, value);
 
-    public byte PpuRead(ushort address) => Mapper.PpuRead(address);
+    public byte PpuRead(ushort address)
+    {
+        Mapper.NotifyPpuAddress(address, syntheticNotificationDot);
+        syntheticNotificationDot += 16;
+        return Mapper.PpuRead(address);
+    }
+
+    public byte PpuRead(ushort address, ulong ppuDot)
+    {
+        Mapper.NotifyPpuAddress(address, ppuDot);
+        return Mapper.PpuRead(address);
+    }
 
     public byte PpuPeek(ushort address) => Mapper.PpuPeek(address);
 
-    public void PpuWrite(ushort address, byte value) => Mapper.PpuWrite(address, value);
+    public void PpuWrite(ushort address, byte value)
+    {
+        Mapper.NotifyPpuAddress(address, syntheticNotificationDot);
+        syntheticNotificationDot += 16;
+        Mapper.PpuWrite(address, value);
+    }
+
+    public void PpuWrite(ushort address, byte value, ulong ppuDot)
+    {
+        Mapper.NotifyPpuAddress(address, ppuDot);
+        Mapper.PpuWrite(address, value);
+    }
 
     public void NotifyPpuAddress(ushort address)
     {
