@@ -8,6 +8,7 @@ TestResults/
 artifacts/
 tools/
 cfg/
+snap/
 *.sav
 
 # Local ROM/test-ROM fixtures. Keep README/provenance tracked, not the ROM payloads.
