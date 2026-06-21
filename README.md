@@ -16,6 +16,7 @@ dotnet run --project src\NesSharp.Cli -- render-frame "roms\USA\Super Mario Bros
 .\scripts\capture-mame-frame.ps1 "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" -Frame 420 -InputScript "60-90:Start;180-240:Start;260-420:Right+B" -OutPath artifacts\mame\smb3_frame420.bmp
 dotnet run --project src\NesSharp.Cli -- compare-frame "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" --frames 420 --input "60-90:Start;180-240:Start;260-420:Right+B" --reference artifacts\mame\smb3_frame420.bmp --out artifacts\frames\smb3_frame420_nessharp.bmp
 dotnet run --project src\NesSharp.Cli -- scan-frame-match "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" --reference artifacts\mame\smb3_frame420.bmp --start-frame 360 --end-frame 480
+dotnet run --project src\NesSharp.Cli -- sample-frames "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" --start-frame 300 --end-frame 1200 --step 60 --input "60-90:Start;180-240:Start"
 dotnet run --project src\NesSharp.Cli -- diagnose-frame "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" --frames 300
 dotnet run --project src\NesSharp.Desktop -- test-roms\nes-test-roms\ppu_read_buffer\test_ppu_read_buffer.nes
 ```
@@ -53,8 +54,8 @@ For local reference captures, MAME 0.288 can be installed under `tools\mame-0.28
 - Implements CPU-visible PPU VRAM, nametable mirroring, palette mirroring, buffered `$2007` reads, `$2005/$2006` write latch behavior, OAM, phase-aligned OAM DMA cycle timing, and PPU open-bus decay.
 - Implements pragmatic visible-scanline sprite composition, per-scanline sprite OAM/pattern latching, sprite/background priority, sprite flipping, 8x16 sprite tile selection, timed sprite overflow status, diagonal overflow search behavior, and sprite 0 hit detection. All `sprite_hit_tests_2005.10.05` and `sprite_overflow_tests` ROMs currently pass.
 - Maintains a 256x240 palette-index framebuffer and can export it as binary PPM or 24-bit BMP through the CLI.
-- Provides CLI frame comparison and frame-range scanning for exact RGB diffs against reference PPM/BMP frames, intended for MAME/reference-emulator visual checks.
-- Provides a CLI frame diagnostic command that prints PPU timing/scroll/fetch state and Mapper 4 bank/IRQ state at a target frame.
+- Provides CLI frame comparison, frame-range scanning, and compact frame sampling for MAME/reference-emulator visual checks.
+- Provides a CLI frame diagnostic command that prints PPU timing/scroll/fetch/OAM state and Mapper 4 bank/IRQ state at a target frame.
 - Uses a shared MAME-compatible NTSC NES RGB palette for frame export, desktop display, and visual regression hashing.
 - Includes a deterministic RGB hash regression for `ppu_read_buffer` frame 120.
 - Implements standard controller strobe/read behavior on `$4016/$4017`.

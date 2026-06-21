@@ -71,6 +71,9 @@ public sealed class PpuBus
         var nametableSample = new byte[64];
         nametableRam.AsSpan(0, nametableSample.Length).CopyTo(nametableSample);
 
+        var oamCopy = new byte[oam.Length];
+        oam.CopyTo(oamCopy, 0);
+
         return new PpuDebugState(
             Frame,
             Scanline,
@@ -113,7 +116,9 @@ public sealed class PpuBus
             scanlineSpriteY,
             scanlineSpriteCount,
             palette,
-            nametableSample);
+            nametableSample,
+            oamCopy,
+            CaptureScanlineSpriteDebugEntries());
     }
 
     public byte ReadRegister(ushort address)
@@ -488,6 +493,23 @@ public sealed class PpuBus
     public void WriteOamDmaByte(byte value)
     {
         oam[oamAddress++] = value;
+    }
+
+    public SpriteDebugEntry[] CaptureScanlineSpriteDebugEntries()
+    {
+        var entries = new SpriteDebugEntry[scanlineSpriteCount];
+        for (var i = 0; i < entries.Length; i++)
+        {
+            var sprite = scanlineSprites[i];
+            entries[i] = new SpriteDebugEntry(
+                sprite.SpriteIndex,
+                sprite.X,
+                sprite.Attributes,
+                sprite.PatternLow,
+                sprite.PatternHigh);
+        }
+
+        return entries;
     }
 
     private bool IsNmiEnabled => (registers[0] & NmiEnableFlag) != 0;
@@ -1364,4 +1386,13 @@ public readonly record struct PpuDebugState(
     int ScanlineSpriteY,
     int ScanlineSpriteCount,
     byte[] PaletteRam,
-    byte[] NametableSample);
+    byte[] NametableSample,
+    byte[] Oam,
+    SpriteDebugEntry[] ScanlineSprites);
+
+public readonly record struct SpriteDebugEntry(
+    int SpriteIndex,
+    byte X,
+    byte Attributes,
+    byte PatternLow,
+    byte PatternHigh);

@@ -26,6 +26,7 @@ try
         "render-frame" => RenderFrame(args),
         "compare-frame" => CompareFrame(args),
         "scan-frame-match" => ScanFrameMatch(args),
+        "sample-frames" => SampleFrames(args),
         "diagnose-frame" => DiagnoseFrame(args),
         _ => UnknownCommand(args[0])
     };
@@ -88,6 +89,8 @@ static void PrintUsage()
     Console.WriteLine("                   Compare nesSharp RGB output against a 256x240 reference frame.");
     Console.WriteLine("  scan-frame-match <rom.nes> --reference frame.ppm|frame.bmp --start-frame 1 --end-frame 300");
     Console.WriteLine("                   Compare a reference against each frame in a nesSharp frame range.");
+    Console.WriteLine("  sample-frames <rom.nes> --end-frame 1200 [--start-frame 1] [--step 60] [--input \"60-90:Start\"]");
+    Console.WriteLine("                   Print framebuffer hashes and palette histograms at frame intervals.");
     Console.WriteLine("  diagnose-frame <rom.nes> [--frames 1] [--input \"60-90:Start\"]");
     Console.WriteLine("                   Print PPU and mapper state after running to a frame.");
 }
@@ -290,6 +293,59 @@ static int ScanFrameMatch(string[] args)
     return 0;
 }
 
+static int SampleFrames(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.Error.WriteLine("Usage: NesSharp.Cli sample-frames <rom.nes> --end-frame 1200 [--start-frame 1] [--step 60] [--input \"60-90:Start\"] [--max-instructions 50000000]");
+        return 1;
+    }
+
+    var startFrame = GetIntOption(args, "--start-frame", 1);
+    var endFrame = GetIntOption(args, "--end-frame", startFrame);
+    var step = GetIntOption(args, "--step", 60);
+    if (startFrame < 1 || endFrame < startFrame || step < 1)
+    {
+        Console.Error.WriteLine("Frame range must satisfy 1 <= start-frame <= end-frame and step >= 1.");
+        return 1;
+    }
+
+    var maxInstructions = GetLongOption(args, "--max-instructions", 50_000_000);
+    var inputScript = FrameInputScript.Parse(GetOption(args, "--input"));
+    var machine = NesMachine.LoadFile(args[1]);
+    machine.Reset();
+
+    long instructions = 0;
+    var nextSample = (ulong)startFrame;
+    Console.WriteLine("frame,instructions,fb_sha256,nonzero_pixels,top_palette_indices");
+
+    while (machine.PpuBus.Frame < (ulong)endFrame && instructions < maxInstructions)
+    {
+        machine.Controller1.State = inputScript.GetState(machine.PpuBus.Frame);
+        machine.StepInstruction();
+        instructions++;
+
+        if (machine.PpuBus.Frame < nextSample)
+        {
+            continue;
+        }
+
+        PrintFrameSample(machine.PpuBus.Framebuffer, machine.PpuBus.Frame, instructions);
+        while (nextSample <= machine.PpuBus.Frame)
+        {
+            nextSample += (ulong)step;
+        }
+    }
+
+    if (machine.PpuBus.Frame < (ulong)endFrame)
+    {
+        Console.Error.WriteLine($"Timed out after {instructions} instructions before reaching frame {endFrame}.");
+        return 1;
+    }
+
+    return 0;
+}
+
 static RenderFrameResult RenderFrameBuffer(string romPath, string[] args)
 {
     var result = RunMachineToFrame(romPath, args);
@@ -359,6 +415,8 @@ static void PrintFrameDiagnosis(MachineFrameResult result)
     Console.WriteLine($"OAM: address=${ppu.OamAddress:X2}, scanline sprite y={ppu.ScanlineSpriteY}, scanline sprite count={ppu.ScanlineSpriteCount}");
     Console.WriteLine($"Palette RAM: {FormatBytes(ppu.PaletteRam)}");
     Console.WriteLine($"Nametable $2000 sample: {FormatBytes(ppu.NametableSample)}");
+    Console.WriteLine($"OAM sprites 0-15: {FormatOamSprites(ppu.Oam, maxSprites: 16)}");
+    Console.WriteLine($"Latched scanline sprites: {FormatLatchedSprites(ppu.ScanlineSprites)}");
     Console.WriteLine($"Background fetch: valid={ppu.BackgroundFetchValid}, render=${ppu.BackgroundFetchRenderAddress:X4}, tile=${ppu.BackgroundFetchTileIndex:X2}, attr={ppu.BackgroundFetchAttributePalette}, pattern=${ppu.BackgroundFetchPatternAddress:X4}, low=${ppu.BackgroundFetchPatternLow:X2}, high=${ppu.BackgroundFetchPatternHigh:X2}");
     Console.WriteLine($"Background shift: valid={ppu.BackgroundShiftValid}, render=${ppu.BackgroundShiftRenderAddress:X4}, next=${ppu.BackgroundShiftNextRenderAddress:X4}, patternLow=${ppu.BackgroundShiftPatternLow:X4}, patternHigh=${ppu.BackgroundShiftPatternHigh:X4}, attrLow=${ppu.BackgroundShiftAttributeLow:X4}, attrHigh=${ppu.BackgroundShiftAttributeHigh:X4}");
 
@@ -506,6 +564,78 @@ static string FormatBytes(IReadOnlyList<byte> values)
 static string FormatInts(IReadOnlyList<int> values)
 {
     return string.Join(" ", values.Select(value => value.ToString(CultureInfo.InvariantCulture)));
+}
+
+static string FormatOamSprites(IReadOnlyList<byte> oam, int maxSprites)
+{
+    var parts = new string[Math.Min(maxSprites, oam.Count / 4)];
+    for (var i = 0; i < parts.Length; i++)
+    {
+        var offset = i * 4;
+        parts[i] = $"#{i:D2}(y=${oam[offset]:X2},tile=${oam[offset + 1]:X2},attr=${oam[offset + 2]:X2},x=${oam[offset + 3]:X2})";
+    }
+
+    return string.Join(" ", parts);
+}
+
+static string FormatLatchedSprites(IReadOnlyList<NesSharp.Core.Ppu.SpriteDebugEntry> sprites)
+{
+    if (sprites.Count == 0)
+    {
+        return "<none>";
+    }
+
+    return string.Join(
+        " ",
+        sprites.Select(sprite =>
+            $"#{sprite.SpriteIndex:D2}(x=${sprite.X:X2},attr=${sprite.Attributes:X2},lo=${sprite.PatternLow:X2},hi=${sprite.PatternHigh:X2})"));
+}
+
+static void PrintFrameSample(ReadOnlySpan<byte> framebuffer, ulong frame, long instructions)
+{
+    Span<int> histogram = stackalloc int[64];
+    var nonzeroPixels = 0;
+    foreach (var rawColor in framebuffer)
+    {
+        var color = rawColor & 0x3F;
+        histogram[color]++;
+        if (color != 0)
+        {
+            nonzeroPixels++;
+        }
+    }
+
+    Span<int> topIndices = stackalloc int[8];
+    topIndices.Fill(-1);
+    for (var color = 0; color < histogram.Length; color++)
+    {
+        for (var slot = 0; slot < topIndices.Length; slot++)
+        {
+            var current = topIndices[slot];
+            if (current >= 0 && histogram[current] >= histogram[color])
+            {
+                continue;
+            }
+
+            for (var move = topIndices.Length - 1; move > slot; move--)
+            {
+                topIndices[move] = topIndices[move - 1];
+            }
+
+            topIndices[slot] = color;
+            break;
+        }
+    }
+
+    var topColors = new string[topIndices.Length];
+    for (var i = 0; i < topIndices.Length; i++)
+    {
+        var color = topIndices[i];
+        topColors[i] = color < 0 ? string.Empty : $"${color:X2}:{histogram[color]}";
+    }
+
+    var hash = Convert.ToHexString(SHA256.HashData(framebuffer)).ToLowerInvariant();
+    Console.WriteLine($"{frame},{instructions},{hash},{nonzeroPixels},{string.Join(" ", topColors)}");
 }
 
 internal sealed partial record NestestLogState(
