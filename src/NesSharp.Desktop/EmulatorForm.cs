@@ -20,6 +20,7 @@ internal sealed class EmulatorForm : Form
     private readonly ToolStripMenuItem resetMenuItem = new("&Reset");
     private readonly ToolStripMenuItem powerCycleMenuItem = new("&Power Cycle");
     private readonly ToolStripMenuItem pauseMenuItem = new("&Pause") { CheckOnClick = true };
+    private readonly ToolStripMenuItem frameAdvanceMenuItem = new("&Frame Advance");
     private readonly ToolStripMenuItem captureDiagnosticsMenuItem = new("&Capture Diagnostics");
     private readonly Lock machineLock = new();
     private readonly WaveOutAudioPlayer audioPlayer = new();
@@ -136,6 +137,8 @@ internal sealed class EmulatorForm : Form
         resetMenuItem.Click += (_, _) => ResetMachine();
         powerCycleMenuItem.ShortcutKeys = Keys.Control | Keys.Shift | Keys.R;
         powerCycleMenuItem.Click += (_, _) => PowerCycleMachine();
+        frameAdvanceMenuItem.ShortcutKeys = Keys.F10;
+        frameAdvanceMenuItem.Click += (_, _) => StepFrame();
         captureDiagnosticsMenuItem.ShortcutKeys = Keys.Control | Keys.D;
         captureDiagnosticsMenuItem.Click += (_, _) => CaptureDiagnostics();
         pauseMenuItem.ShortcutKeyDisplayString = "Space";
@@ -162,6 +165,7 @@ internal sealed class EmulatorForm : Form
 
         var emulationMenu = new ToolStripMenuItem("&Emulation");
         emulationMenu.DropDownItems.Add(pauseMenuItem);
+        emulationMenu.DropDownItems.Add(frameAdvanceMenuItem);
         emulationMenu.DropDownItems.Add(captureDiagnosticsMenuItem);
 
         var menuStrip = new MenuStrip();
@@ -340,20 +344,11 @@ internal sealed class EmulatorForm : Form
                         return;
                     }
 
-                    var startFrame = machine.PpuBus.Frame;
-                    long instructions = 0;
-                    while (machine.PpuBus.Frame == startFrame &&
-                        instructions < MaxInstructionsPerFrame &&
-                        !token.IsCancellationRequested)
-                    {
-                        machine.StepInstruction();
-                        instructions++;
-                    }
-
-                    machine.PpuBus.Framebuffer.CopyTo(framebuffer);
+                    var result = RunMachineUntilNextFrame(machine, token);
+                    framebuffer = result.Framebuffer;
                     audioSamples = machine.CpuBus.ApuBus.DrainSamples();
-                    frame = machine.PpuBus.Frame;
-                    frameLimited = instructions >= MaxInstructionsPerFrame;
+                    frame = result.Frame;
+                    frameLimited = result.FrameLimited;
                 }
             }
             catch (Exception ex)
@@ -371,6 +366,62 @@ internal sealed class EmulatorForm : Form
             audioPlayer.Enqueue(audioSamples);
             WaitForNextFrame(frameStartedAt, token);
         }
+    }
+
+    private void StepFrame()
+    {
+        if (machine is null)
+        {
+            return;
+        }
+
+        if (!pauseMenuItem.Checked)
+        {
+            pauseMenuItem.Checked = true;
+        }
+        else
+        {
+            StopEmulationLoop();
+        }
+
+        byte[] framebuffer;
+        ulong frame;
+        bool frameLimited;
+
+        lock (machineLock)
+        {
+            if (machine is null)
+            {
+                return;
+            }
+
+            var result = RunMachineUntilNextFrame(machine);
+            framebuffer = result.Framebuffer;
+            frame = result.Frame;
+            frameLimited = result.FrameLimited;
+            machine.CpuBus.ApuBus.DrainSamples();
+        }
+
+        display.UpdateFrame(framebuffer);
+        UpdateUiState(frameLimited, frame);
+    }
+
+    private static FrameStepResult RunMachineUntilNextFrame(NesMachine targetMachine, CancellationToken token = default)
+    {
+        var startFrame = targetMachine.PpuBus.Frame;
+        long instructions = 0;
+        while (targetMachine.PpuBus.Frame == startFrame &&
+            instructions < MaxInstructionsPerFrame &&
+            !token.IsCancellationRequested)
+        {
+            targetMachine.StepInstruction();
+            instructions++;
+        }
+
+        return new FrameStepResult(
+            targetMachine.PpuBus.Framebuffer.ToArray(),
+            targetMachine.PpuBus.Frame,
+            instructions >= MaxInstructionsPerFrame);
     }
 
     private void PostFrame(byte[] framebuffer, ulong frame, bool frameLimited)
@@ -447,6 +498,7 @@ internal sealed class EmulatorForm : Form
         resetMenuItem.Enabled = hasRom;
         powerCycleMenuItem.Enabled = hasRom;
         pauseMenuItem.Enabled = hasRom;
+        frameAdvanceMenuItem.Enabled = hasRom;
         captureDiagnosticsMenuItem.Enabled = hasRom;
 
         if (!hasRom)
@@ -718,3 +770,5 @@ internal sealed class EmulatorForm : Form
         };
     }
 }
+
+internal readonly record struct FrameStepResult(byte[] Framebuffer, ulong Frame, bool FrameLimited);

@@ -21,7 +21,7 @@ dotnet run --project src\NesSharp.Cli -- diagnose-frame "roms\USA\Super Mario Br
 dotnet run --project src\NesSharp.Desktop -- test-roms\nes-test-roms\ppu_read_buffer\test_ppu_read_buffer.nes
 ```
 
-Desktop controller 1 mapping: `Z` = A, `X` = B, `Backspace` = Select, `Enter` = Start, arrow keys = D-pad. Use `Ctrl+R` for reset, `Ctrl+Shift+R` for power cycle, and `Ctrl+D` to capture the current frame plus PPU/OAM/Mapper 4 diagnostics under `artifacts\desktop-captures`.
+Desktop controller 1 mapping: `Z` = A, `X` = B, `Backspace` = Select, `Enter` = Start, arrow keys = D-pad. Use `Ctrl+R` for reset, `Ctrl+Shift+R` for power cycle, Space to pause, `F10` to advance one frame, and `Ctrl+D` to capture the current frame plus PPU/OAM/Mapper 4 diagnostics under `artifacts\desktop-captures`.
 Battery-backed saves are loaded from and written to a `.sav` file beside the ROM in the desktop host.
 
 `render-frame` and `compare-frame` support 256x240 binary PPM (`P6`) and uncompressed 24-bit BMP files. MAME snapshots are commonly PNG files; convert those to BMP or PPM first, then compare the converted reference against nesSharp's rendered frame.
