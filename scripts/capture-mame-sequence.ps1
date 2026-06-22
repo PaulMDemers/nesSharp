@@ -15,6 +15,8 @@ param(
 
     [string]$MamePath = ".\tools\mame-0.288\mame.exe",
 
+    [string]$InputScript = "",
+
     [string]$System = "nes"
 )
 
@@ -44,14 +46,102 @@ $nesNtscFrameRate = 60.0988138974405
 $watchdogSeconds = [Math]::Max(1, [int][Math]::Ceiling($EndFrame / $nesNtscFrameRate) + 2)
 $watchdogSecondsText = $watchdogSeconds.ToString([System.Globalization.CultureInfo]::InvariantCulture)
 
+function Convert-InputScriptToLuaTable {
+    param([string]$Script)
+
+    if ([string]::IsNullOrWhiteSpace($Script)) {
+        return "{}"
+    }
+
+    $validButtons = @("A", "B", "Select", "Start", "Up", "Down", "Left", "Right")
+    $ranges = New-Object System.Collections.Generic.List[string]
+    foreach ($part in $Script.Split(";", [System.StringSplitOptions]::RemoveEmptyEntries)) {
+        $pieces = $part.Split(":", 2, [System.StringSplitOptions]::TrimEntries)
+        if ($pieces.Length -ne 2) {
+            throw "Input ranges must use the form start-end:Button+Button."
+        }
+
+        $framePieces = $pieces[0].Split("-", 2, [System.StringSplitOptions]::TrimEntries)
+        $startFrame = [int]::Parse($framePieces[0], [System.Globalization.CultureInfo]::InvariantCulture)
+        $endFrame = if ($framePieces.Length -eq 1) {
+            $startFrame
+        }
+        else {
+            [int]::Parse($framePieces[1], [System.Globalization.CultureInfo]::InvariantCulture)
+        }
+
+        if ($startFrame -lt 0 -or $endFrame -lt $startFrame) {
+            throw "Input range end frame cannot be before the start."
+        }
+
+        $buttons = New-Object System.Collections.Generic.List[string]
+        foreach ($buttonText in $pieces[1].Split("+", [System.StringSplitOptions]::RemoveEmptyEntries -bor [System.StringSplitOptions]::TrimEntries)) {
+            if ($buttonText -eq "0" -or $buttonText.Equals("None", [System.StringComparison]::OrdinalIgnoreCase)) {
+                continue
+            }
+
+            $button = $validButtons | Where-Object { $_.Equals($buttonText, [System.StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1
+            if ([string]::IsNullOrWhiteSpace($button)) {
+                throw "Unknown input button '$buttonText'. Valid buttons: $($validButtons -join ', ')."
+            }
+
+            $buttons.Add("`"$button`"")
+        }
+
+        $ranges.Add("{ start = $startFrame, stop = $endFrame, buttons = { $($buttons -join ", ") } }")
+    }
+
+    return "{`n    $($ranges -join ",`n    ")`n}"
+}
+
+$luaInputRanges = Convert-InputScriptToLuaTable $InputScript
+
 $captureScript = @"
 local start_frame = $StartFrame
 local end_frame = $EndFrame
 local step = $Step
+local input_ranges = $luaInputRanges
+local button_fields = {}
+local button_names = { "A", "B", "Select", "Start", "Up", "Down", "Left", "Right" }
+
+local function bind_inputs()
+    local port = manager.machine.ioport.ports[":ctrl1:joypad:JOYPAD"]
+    if port == nil then
+        return
+    end
+
+    for _, field in pairs(port.fields) do
+        for _, button in ipairs(button_names) do
+            if field.name == ("P1 " .. button) then
+                button_fields[button] = field
+            end
+        end
+    end
+end
+
+local function apply_inputs(current_frame)
+    for _, field in pairs(button_fields) do
+        field:set_value(0)
+    end
+
+    for _, range in ipairs(input_ranges) do
+        if current_frame >= range.start and current_frame <= range.stop then
+            for _, button in ipairs(range.buttons) do
+                local field = button_fields[button]
+                if field ~= nil then
+                    field:set_value(1)
+                end
+            end
+        end
+    end
+end
+
 _G.capture_sequence_frame = 0
+bind_inputs()
 _G.capture_sequence_sub = emu.add_machine_frame_notifier(function()
     _G.capture_sequence_frame = _G.capture_sequence_frame + 1
     local frame = _G.capture_sequence_frame
+    apply_inputs(frame)
     if frame >= start_frame and frame <= end_frame and ((frame - start_frame) % step) == 0 then
         print("capturing " .. frame)
         manager.machine.video:snapshot()
