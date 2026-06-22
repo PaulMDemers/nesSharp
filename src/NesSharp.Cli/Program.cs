@@ -5,6 +5,7 @@ using NesSharp.Core.Cartridge;
 using NesSharp.Core.Cpu;
 using NesSharp.Core.Input;
 using NesSharp.Core.Memory;
+using NesSharp.Core.Ppu;
 using NesSharp.Core.Runtime;
 using NesSharp.Core.Testing;
 
@@ -95,8 +96,8 @@ static void PrintUsage()
     Console.WriteLine("                   Compare a reference against each frame in a nesSharp frame range.");
     Console.WriteLine("  sample-frames <rom.nes> --end-frame 1200 [--start-frame 1] [--step 60] [--input \"60-90:Start\"]");
     Console.WriteLine("                   Print framebuffer hashes and palette histograms at frame intervals.");
-    Console.WriteLine("  diagnose-frame <rom.nes> [--frames 1] [--input \"60-90:Start\"]");
-    Console.WriteLine("                   Print PPU and mapper state after running to a frame.");
+    Console.WriteLine("  diagnose-frame <rom.nes> [--frames 1] [--input \"60-90:Start\"] [--dump-state-dir dir]");
+    Console.WriteLine("                   Print PPU and mapper state after running to a frame, optionally dumping binary PPU state.");
     Console.WriteLine("  trace-writes <rom.nes> [--frames 1] [--start-frame N] [--scanline-start N] [--scanline-end N] [--include-controller]");
     Console.WriteLine("                   Print PPU register and mapper writes with PPU timing.");
 }
@@ -441,7 +442,7 @@ static int DiagnoseFrame(string[] args)
 {
     if (args.Length < 2)
     {
-        Console.Error.WriteLine("Usage: NesSharp.Cli diagnose-frame <rom.nes> [--frames 1] [--input \"60-90:Start\"] [--max-instructions 50000000]");
+        Console.Error.WriteLine("Usage: NesSharp.Cli diagnose-frame <rom.nes> [--frames 1] [--input \"60-90:Start\"] [--dump-state-dir dir] [--max-instructions 50000000]");
         return 1;
     }
 
@@ -453,6 +454,12 @@ static int DiagnoseFrame(string[] args)
     }
 
     PrintFrameDiagnosis(result);
+    var dumpStateDirectory = GetOption(args, "--dump-state-dir");
+    if (!string.IsNullOrWhiteSpace(dumpStateDirectory))
+    {
+        WriteFrameDiagnosisDump(result.Machine.PpuBus.CaptureDebugState(), dumpStateDirectory);
+    }
+
     return 0;
 }
 
@@ -653,6 +660,15 @@ static void PrintFrameDiagnosis(MachineFrameResult result)
     {
         Console.WriteLine($"Mapper diagnostics: mapper {cartridge.Header.MapperNumber} does not expose extended debug state.");
     }
+}
+
+static void WriteFrameDiagnosisDump(PpuDebugState ppu, string directory)
+{
+    Directory.CreateDirectory(directory);
+    File.WriteAllBytes(Path.Combine(directory, "palette.bin"), ppu.PaletteRam);
+    File.WriteAllBytes(Path.Combine(directory, "nametable.bin"), ppu.NametableRam);
+    File.WriteAllBytes(Path.Combine(directory, "oam.bin"), ppu.Oam);
+    Console.WriteLine($"PPU state dump: {Path.GetFullPath(directory)}");
 }
 
 static int TraceRom(string[] args)

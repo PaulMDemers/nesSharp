@@ -80,6 +80,9 @@ public sealed class PpuBus
         var nametableSample = new byte[64];
         nametableRam.AsSpan(0, nametableSample.Length).CopyTo(nametableSample);
 
+        var nametableCopy = new byte[nametableRam.Length];
+        nametableRam.CopyTo(nametableCopy, 0);
+
         var oamCopy = new byte[oam.Length];
         oam.CopyTo(oamCopy, 0);
 
@@ -131,6 +134,7 @@ public sealed class PpuBus
             scanlineSpriteY,
             scanlineSpriteCount,
             palette,
+            nametableCopy,
             nametableSample,
             oamCopy,
             CaptureScanlineSpriteDebugEntries());
@@ -1517,6 +1521,7 @@ public readonly record struct PpuDebugState(
     int ScanlineSpriteY,
     int ScanlineSpriteCount,
     byte[] PaletteRam,
+    byte[] NametableRam,
     byte[] NametableSample,
     byte[] Oam,
     SpriteDebugEntry[] ScanlineSprites);
