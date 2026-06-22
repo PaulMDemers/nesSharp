@@ -28,6 +28,7 @@ public sealed class CpuBus
     {
         Cartridge = cartridge;
         this.ppuBus = ppuBus;
+        InitializePowerOnRam();
     }
 
     public Cartridge.Cartridge Cartridge { get; }
@@ -45,6 +46,14 @@ public sealed class CpuBus
     public event Action<CpuBusReadDebugEntry>? ReadObserved;
 
     public event Action<CpuBusWriteDebugEntry>? WriteObserved;
+
+    private void InitializePowerOnRam()
+    {
+        for (var i = 0; i < ram.Length; i++)
+        {
+            ram[i] = (byte)((i & 0x01) == 0 ? 0x00 : 0xFF);
+        }
+    }
 
     public void SetCpuCycleCallback(Action callback)
     {

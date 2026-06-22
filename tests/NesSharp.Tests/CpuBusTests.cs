@@ -7,6 +7,19 @@ namespace NesSharp.Tests;
 public sealed class CpuBusTests
 {
     [Fact]
+    public void InternalRamPowersOnWithAlternatingMamePattern()
+    {
+        var bus = new CpuBus(CreateCartridgeWithResetVector());
+
+        Assert.Equal(0x00, bus.Read(0x0000));
+        Assert.Equal(0xFF, bus.Read(0x0001));
+        Assert.Equal(0x00, bus.Read(0x0002));
+        Assert.Equal(0xFF, bus.Read(0x0003));
+        Assert.Equal(0x00, bus.Read(0x0800));
+        Assert.Equal(0xFF, bus.Read(0x0801));
+    }
+
+    [Fact]
     public void MirrorsInternalRamEveryTwoKilobytes()
     {
         var bus = new CpuBus(CreateCartridgeWithResetVector());
