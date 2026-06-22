@@ -97,7 +97,7 @@ static void PrintUsage()
     Console.WriteLine("                   Print framebuffer hashes and palette histograms at frame intervals.");
     Console.WriteLine("  diagnose-frame <rom.nes> [--frames 1] [--input \"60-90:Start\"]");
     Console.WriteLine("                   Print PPU and mapper state after running to a frame.");
-    Console.WriteLine("  trace-writes <rom.nes> [--frames 1] [--start-frame N] [--scanline-start N] [--scanline-end N]");
+    Console.WriteLine("  trace-writes <rom.nes> [--frames 1] [--start-frame N] [--scanline-start N] [--scanline-end N] [--include-controller]");
     Console.WriteLine("                   Print PPU register and mapper writes with PPU timing.");
 }
 
@@ -460,7 +460,7 @@ static int TraceWrites(string[] args)
 {
     if (args.Length < 2)
     {
-        Console.Error.WriteLine("Usage: NesSharp.Cli trace-writes <rom.nes> [--frames 1] [--start-frame N] [--scanline-start N] [--scanline-end N] [--input \"60-90:Start\"] [--max-instructions 50000000]");
+        Console.Error.WriteLine("Usage: NesSharp.Cli trace-writes <rom.nes> [--frames 1] [--start-frame N] [--scanline-start N] [--scanline-end N] [--include-controller] [--input \"60-90:Start\"] [--max-instructions 50000000]");
         return 1;
     }
 
@@ -474,6 +474,7 @@ static int TraceWrites(string[] args)
 
     var scanlineStart = GetIntOption(args, "--scanline-start", int.MinValue);
     var scanlineEnd = GetIntOption(args, "--scanline-end", int.MaxValue);
+    var includeController = args.Contains("--include-controller", StringComparer.Ordinal);
     var maxInstructions = GetLongOption(args, "--max-instructions", 50_000_000);
     var inputScript = FrameInputScript.Parse(GetOption(args, "--input"));
     var machine = NesMachine.LoadFile(args[1]);
@@ -487,7 +488,7 @@ static int TraceWrites(string[] args)
             entry.PpuFrame > endFrame ||
             entry.PpuScanline < scanlineStart ||
             entry.PpuScanline > scanlineEnd ||
-            !ShouldTraceRead(entry.Address))
+            !ShouldTraceRead(entry.Address, includeController))
         {
             return;
         }
@@ -502,7 +503,7 @@ static int TraceWrites(string[] args)
             entry.PpuFrame > endFrame ||
             entry.PpuScanline < scanlineStart ||
             entry.PpuScanline > scanlineEnd ||
-            !ShouldTraceWrite(entry.Address))
+            !ShouldTraceWrite(entry.Address, includeController))
         {
             return;
         }
@@ -527,21 +528,26 @@ static int TraceWrites(string[] args)
     return machine.PpuBus.Frame >= targetFrame ? 0 : 1;
 }
 
-static bool ShouldTraceRead(ushort address)
+static bool ShouldTraceRead(ushort address, bool includeController)
 {
-    return address is >= 0x2000 and <= 0x3FFF && (address & 0x0007) == 2;
+    return (address is >= 0x2000 and <= 0x3FFF && (address & 0x0007) == 2) ||
+        (includeController && address is (0x4016 or 0x4017));
 }
 
-static bool ShouldTraceWrite(ushort address)
+static bool ShouldTraceWrite(ushort address, bool includeController)
 {
-    return address is >= 0x2000 and <= 0x3FFF or 0x4014 or >= 0x8000;
+    return address is >= 0x2000 and <= 0x3FFF or 0x4014 or >= 0x8000 ||
+        (includeController && address == 0x4016);
 }
 
 static string FormatReadTrace(CpuBusReadDebugEntry entry, ushort pc)
 {
+    var register = entry.Address is 0x4016 or 0x4017
+        ? "Controller"
+        : "PPU$2002";
     return string.Create(
         CultureInfo.InvariantCulture,
-        $"F{entry.PpuFrame,4} PC={pc:X4} SL{entry.PpuScanline,3} D{entry.PpuDot,3} ${entry.Address:X4}->${entry.Value:X2} PPU$2002 statusAfter=${entry.PpuStatusAfterRead:X2} ctrl=${entry.PpuControl:X2} mask=${entry.PpuMask:X2} v=${entry.CurrentVramAddress:X4} t=${entry.TemporaryVramAddress:X4} x={entry.FineX} scroll=({entry.ScrollX},{entry.ScrollY}) w={entry.WriteToggle}");
+        $"F{entry.PpuFrame,4} PC={pc:X4} SL{entry.PpuScanline,3} D{entry.PpuDot,3} ${entry.Address:X4}->${entry.Value:X2} {register} statusAfter=${entry.PpuStatusAfterRead:X2} ctrl=${entry.PpuControl:X2} mask=${entry.PpuMask:X2} v=${entry.CurrentVramAddress:X4} t=${entry.TemporaryVramAddress:X4} x={entry.FineX} scroll=({entry.ScrollX},{entry.ScrollY}) w={entry.WriteToggle}");
 }
 
 static string FormatWriteTrace(CpuBusWriteDebugEntry entry, IMapper mapper, ushort pc)
@@ -550,7 +556,9 @@ static string FormatWriteTrace(CpuBusWriteDebugEntry entry, IMapper mapper, usho
         ? $"PPU${0x2000 + (entry.Address & 0x0007):X4}"
         : entry.Address == 0x4014
             ? "OAMDMA"
-            : GetMapperWriteName(entry.Address);
+            : entry.Address == 0x4016
+                ? "Controller strobe"
+                : GetMapperWriteName(entry.Address);
     var line = string.Create(
         CultureInfo.InvariantCulture,
         $"F{entry.PpuFrame,4} PC={pc:X4} SL{entry.PpuScanline,3} D{entry.PpuDot,3} ${entry.Address:X4}<-${entry.Value:X2} {register} ctrl=${entry.PpuControl:X2} mask=${entry.PpuMask:X2} v=${entry.CurrentVramAddress:X4} t=${entry.TemporaryVramAddress:X4} x={entry.FineX} scroll=({entry.ScrollX},{entry.ScrollY}) w={entry.WriteToggle}");
