@@ -42,6 +42,8 @@ public sealed class CpuBus
 
     public int InstructionAccessCycles => instructionAccessCycles;
 
+    public event Action<CpuBusReadDebugEntry>? ReadObserved;
+
     public event Action<CpuBusWriteDebugEntry>? WriteObserved;
 
     public void SetCpuCycleCallback(Action callback)
@@ -105,7 +107,7 @@ public sealed class CpuBus
 
     public byte ReadRaw(ushort address)
     {
-        return address switch
+        var value = address switch
         {
             <= 0x1FFF => ram[address & 0x07FF],
             >= 0x2000 and <= 0x3FFF => ppuBus.ReadRegister((ushort)(0x2000 + (address & 0x0007))),
@@ -116,6 +118,27 @@ public sealed class CpuBus
             >= 0x4020 and <= 0x5FFF => openBus,
             >= 0x6000 => Cartridge.CpuRead(address)
         };
+        if (ReadObserved is not null)
+        {
+            var ppu = ppuBus.CaptureDebugState();
+            ReadObserved(new CpuBusReadDebugEntry(
+                address,
+                value,
+                ppu.Frame,
+                ppu.Scanline,
+                ppu.Dot,
+                ppu.Control,
+                ppu.Mask,
+                ppu.Status,
+                ppu.CurrentVramAddress,
+                ppu.TemporaryVramAddress,
+                ppu.FineX,
+                ppu.ScrollX,
+                ppu.ScrollY,
+                ppu.WriteToggle));
+        }
+
+        return value;
     }
 
     public void Write(ushort address, byte value)
@@ -400,6 +423,22 @@ public readonly record struct CpuBusWriteDebugEntry(
     int PpuDot,
     byte PpuControl,
     byte PpuMask,
+    ushort CurrentVramAddress,
+    ushort TemporaryVramAddress,
+    byte FineX,
+    int ScrollX,
+    int ScrollY,
+    bool WriteToggle);
+
+public readonly record struct CpuBusReadDebugEntry(
+    ushort Address,
+    byte Value,
+    ulong PpuFrame,
+    int PpuScanline,
+    int PpuDot,
+    byte PpuControl,
+    byte PpuMask,
+    byte PpuStatusAfterRead,
     ushort CurrentVramAddress,
     ushort TemporaryVramAddress,
     byte FineX,

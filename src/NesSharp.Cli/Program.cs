@@ -401,7 +401,23 @@ static int TraceWrites(string[] args)
     var inputScript = FrameInputScript.Parse(GetOption(args, "--input"));
     var machine = NesMachine.LoadFile(args[1]);
     machine.Reset();
-    var tracedWrites = 0;
+    var tracedEvents = 0;
+    var currentInstructionPc = machine.Cpu.ProgramCounter;
+
+    machine.CpuBus.ReadObserved += entry =>
+    {
+        if (entry.PpuFrame < startFrame ||
+            entry.PpuFrame > endFrame ||
+            entry.PpuScanline < scanlineStart ||
+            entry.PpuScanline > scanlineEnd ||
+            !ShouldTraceRead(entry.Address))
+        {
+            return;
+        }
+
+        tracedEvents++;
+        Console.WriteLine(FormatReadTrace(entry, currentInstructionPc));
+    };
 
     machine.CpuBus.WriteObserved += entry =>
     {
@@ -414,8 +430,8 @@ static int TraceWrites(string[] args)
             return;
         }
 
-        tracedWrites++;
-        Console.WriteLine(FormatWriteTrace(entry, machine.Cartridge.Mapper));
+        tracedEvents++;
+        Console.WriteLine(FormatWriteTrace(entry, machine.Cartridge.Mapper, currentInstructionPc));
     };
 
     long instructions = 0;
@@ -423,14 +439,20 @@ static int TraceWrites(string[] args)
     while (machine.PpuBus.Frame < targetFrame && instructions < maxInstructions)
     {
         machine.Controller1.State = inputScript.GetState(machine.PpuBus.Frame);
+        currentInstructionPc = machine.Cpu.ProgramCounter;
         machine.StepInstruction();
         instructions++;
     }
 
-    Console.WriteLine($"Traced writes: {tracedWrites}");
+    Console.WriteLine($"Traced events: {tracedEvents}");
     Console.WriteLine($"Instructions: {instructions}");
     Console.WriteLine($"Frame reached: {machine.PpuBus.Frame} (target {targetFrame})");
     return machine.PpuBus.Frame >= targetFrame ? 0 : 1;
+}
+
+static bool ShouldTraceRead(ushort address)
+{
+    return address is >= 0x2000 and <= 0x3FFF && (address & 0x0007) == 2;
 }
 
 static bool ShouldTraceWrite(ushort address)
@@ -438,7 +460,14 @@ static bool ShouldTraceWrite(ushort address)
     return address is >= 0x2000 and <= 0x3FFF or 0x4014 or >= 0x8000;
 }
 
-static string FormatWriteTrace(CpuBusWriteDebugEntry entry, IMapper mapper)
+static string FormatReadTrace(CpuBusReadDebugEntry entry, ushort pc)
+{
+    return string.Create(
+        CultureInfo.InvariantCulture,
+        $"F{entry.PpuFrame,4} PC={pc:X4} SL{entry.PpuScanline,3} D{entry.PpuDot,3} ${entry.Address:X4}->${entry.Value:X2} PPU$2002 statusAfter=${entry.PpuStatusAfterRead:X2} ctrl=${entry.PpuControl:X2} mask=${entry.PpuMask:X2} v=${entry.CurrentVramAddress:X4} t=${entry.TemporaryVramAddress:X4} x={entry.FineX} scroll=({entry.ScrollX},{entry.ScrollY}) w={entry.WriteToggle}");
+}
+
+static string FormatWriteTrace(CpuBusWriteDebugEntry entry, IMapper mapper, ushort pc)
 {
     var register = entry.Address is >= 0x2000 and <= 0x3FFF
         ? $"PPU${0x2000 + (entry.Address & 0x0007):X4}"
@@ -447,7 +476,7 @@ static string FormatWriteTrace(CpuBusWriteDebugEntry entry, IMapper mapper)
             : GetMapperWriteName(entry.Address);
     var line = string.Create(
         CultureInfo.InvariantCulture,
-        $"F{entry.PpuFrame,4} SL{entry.PpuScanline,3} D{entry.PpuDot,3} ${entry.Address:X4}<-${entry.Value:X2} {register} ctrl=${entry.PpuControl:X2} mask=${entry.PpuMask:X2} v=${entry.CurrentVramAddress:X4} t=${entry.TemporaryVramAddress:X4} x={entry.FineX} scroll=({entry.ScrollX},{entry.ScrollY}) w={entry.WriteToggle}");
+        $"F{entry.PpuFrame,4} PC={pc:X4} SL{entry.PpuScanline,3} D{entry.PpuDot,3} ${entry.Address:X4}<-${entry.Value:X2} {register} ctrl=${entry.PpuControl:X2} mask=${entry.PpuMask:X2} v=${entry.CurrentVramAddress:X4} t=${entry.TemporaryVramAddress:X4} x={entry.FineX} scroll=({entry.ScrollX},{entry.ScrollY}) w={entry.WriteToggle}");
 
     if (mapper is not Mapper4 mapper4 || entry.Address < 0x8000)
     {

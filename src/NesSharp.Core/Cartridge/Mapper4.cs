@@ -4,7 +4,7 @@ public sealed class Mapper4 : IMapper
 {
     private const int PrgBankSize = 8 * 1024;
     private const int ChrBankSize = 1024;
-    private const ulong A12LowFilterDots = 0;
+    private const ulong A12LowFilterDots = 8;
 
     private readonly CartridgeHeader header;
     private readonly byte[] prgRom;
