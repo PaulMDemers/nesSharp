@@ -24,6 +24,7 @@ try
         "test-rom" => RunTestRom(args),
         "shell-test-rom" => RunShellTestRom(args),
         "render-frame" => RenderFrame(args),
+        "render-sequence" => RenderSequence(args),
         "compare-frame" => CompareFrame(args),
         "scan-frame-match" => ScanFrameMatch(args),
         "sample-frames" => SampleFrames(args),
@@ -86,6 +87,8 @@ static void PrintUsage()
     Console.WriteLine("                   Run a shell-exit ROM and report the exit accumulator.");
     Console.WriteLine("  render-frame <rom.nes> --out frame.ppm|frame.bmp [--frames 1] [--input \"60-90:Start\"]");
     Console.WriteLine("                   Run a ROM and export the latest 256x240 framebuffer.");
+    Console.WriteLine("  render-sequence <rom.nes> --out-dir frames --start-frame 1 --end-frame 300 [--step 1] [--format bmp]");
+    Console.WriteLine("                   Run a ROM once and export a numbered frame sequence.");
     Console.WriteLine("  compare-frame <rom.nes> --reference frame.ppm|frame.bmp [--frames 1] [--input \"60-90:Start\"]");
     Console.WriteLine("                   Compare nesSharp RGB output against a 256x240 reference frame.");
     Console.WriteLine("  scan-frame-match <rom.nes> --reference frame.ppm|frame.bmp --start-frame 1 --end-frame 300");
@@ -337,6 +340,80 @@ static int SampleFrames(string[] args)
         while (nextSample <= machine.PpuBus.Frame)
         {
             nextSample += (ulong)step;
+        }
+    }
+
+    if (machine.PpuBus.Frame < (ulong)endFrame)
+    {
+        Console.Error.WriteLine($"Timed out after {instructions} instructions before reaching frame {endFrame}.");
+        return 1;
+    }
+
+    return 0;
+}
+
+static int RenderSequence(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.Error.WriteLine("Usage: NesSharp.Cli render-sequence <rom.nes> --out-dir frames --start-frame 1 --end-frame 300 [--step 1] [--format bmp] [--input \"60-90:Start\"] [--max-instructions 50000000]");
+        return 1;
+    }
+
+    var outputDirectory = GetOption(args, "--out-dir");
+    if (string.IsNullOrWhiteSpace(outputDirectory))
+    {
+        Console.Error.WriteLine("Missing required --out-dir <directory> option.");
+        return 1;
+    }
+
+    var startFrame = GetIntOption(args, "--start-frame", 1);
+    var endFrame = GetIntOption(args, "--end-frame", startFrame);
+    var step = GetIntOption(args, "--step", 1);
+    if (startFrame < 1 || endFrame < startFrame || step < 1)
+    {
+        Console.Error.WriteLine("Frame range must satisfy 1 <= start-frame <= end-frame and step >= 1.");
+        return 1;
+    }
+
+    var format = GetOption(args, "--format") ?? "bmp";
+    if (format is not ("bmp" or "ppm"))
+    {
+        Console.Error.WriteLine("--format must be either bmp or ppm.");
+        return 1;
+    }
+
+    var maxInstructions = GetLongOption(args, "--max-instructions", 50_000_000);
+    var inputScript = FrameInputScript.Parse(GetOption(args, "--input"));
+    var machine = NesMachine.LoadFile(args[1]);
+    machine.Reset();
+
+    Directory.CreateDirectory(outputDirectory);
+
+    long instructions = 0;
+    var nextFrame = (ulong)startFrame;
+    var sequenceIndex = 0;
+    Console.WriteLine("sequence_index,frame,instructions,path");
+
+    while (machine.PpuBus.Frame < (ulong)endFrame && instructions < maxInstructions)
+    {
+        machine.Controller1.State = inputScript.GetState(machine.PpuBus.Frame);
+        machine.StepInstruction();
+        instructions++;
+
+        if (machine.PpuBus.Frame < nextFrame)
+        {
+            continue;
+        }
+
+        var outputPath = Path.Combine(outputDirectory, $"seq_{sequenceIndex:D4}.{format}");
+        FrameImage.Write(outputPath, machine.PpuBus.Framebuffer);
+        Console.WriteLine($"{sequenceIndex},{machine.PpuBus.Frame},{instructions},{Path.GetFullPath(outputPath)}");
+        sequenceIndex++;
+
+        while (nextFrame <= machine.PpuBus.Frame)
+        {
+            nextFrame += (ulong)step;
         }
     }
 
