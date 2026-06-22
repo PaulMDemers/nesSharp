@@ -141,7 +141,7 @@ end
 
 bind_inputs()
 
-emu.add_machine_frame_notifier(function()
+_G.capture_frame_sub = emu.add_machine_frame_notifier(function()
     frame = frame + 1
     apply_inputs(frame)
     if (not captured) and frame >= target_frame then
