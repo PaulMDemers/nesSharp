@@ -516,6 +516,7 @@ public sealed class PpuBus
 
     public void WriteOamDmaByte(byte value)
     {
+        SetOpenBus(value);
         oam[oamAddress++] = value;
     }
 

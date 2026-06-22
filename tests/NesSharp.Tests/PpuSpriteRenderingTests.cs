@@ -152,6 +152,16 @@ public sealed class PpuSpriteRenderingTests
     }
 
     [Fact]
+    public void OamDmaWriteRefreshesPpuStatusOpenBusBits()
+    {
+        var ppu = CreatePpu();
+
+        ppu.WriteOamDmaByte(0xA6);
+
+        Assert.Equal(0x06, ppu.ReadRegister(0x2002) & 0x1F);
+    }
+
+    [Fact]
     public void SpritePatternBytesAreLatchedBeforeRenderedScanline()
     {
         var ppu = CreatePpu();
