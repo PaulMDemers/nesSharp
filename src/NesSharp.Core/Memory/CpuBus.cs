@@ -152,6 +152,17 @@ public sealed class CpuBus
 
     public void Write(ushort address, byte value)
     {
+        if (address is >= 0x2000 and <= 0x3FFF && (address & 0x0007) == 0x0007)
+        {
+            // PPUDATA writes affect palette/VRAM during the CPU access cycle.
+            SetOpenBus(value);
+            WriteRaw(address, value);
+            ClockCpuAccess();
+            AdvanceDmcDmaHaltDelay();
+            TrackDmcDmaHaltRetry();
+            return;
+        }
+
         if (address == 0x4015)
         {
             SetOpenBus(value);
