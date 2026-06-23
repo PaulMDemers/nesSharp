@@ -223,3 +223,51 @@ Normal ROM after the exact `$4014` write-overlap checkpoint:
 ```
 
 `_512` is unchanged from the phase checkpoint. The exact deferral fires once in the normal ROM and does not fire in `_512`. This is still not the complete model; a future implementation probably needs an explicit multi-cycle DMC DMA state machine rather than the current mostly all-at-once shortcut, because other write-overlap and alignment cases still cannot be represented cleanly.
+
+## DMA trace checkpoint
+
+`NesSharp.Cli trace-dma` records the current instruction PC, approximate CPU cycle, OAM DMA start/end, ordinary DMC reads, write-overlap DMC reads, and DMC reads that occur during OAM DMA. This is intended to keep future DMA work tied to event positions rather than only the final pass/fail table.
+
+Current OAM/DMC overlap summaries:
+
+```text
+sprdma_and_dmc_dma.nes
+row start next dmc-at-oam-access oam-end-access
+00  put   -                 518
+01  put   -                 518
+02  put   -                 518
+03  get   -                 523
+04  put   -                 521
+05  get   -                 521
+06  get   8                 521
+07  get   8                 521
+08  get   8                 521
+09  get   8                 521
+0A  get   10                521
+0B  get   10                521
+0C  get   12                521
+0D  get   12                521
+0E  get   14                521
+0F  get   14                521
+
+sprdma_and_dmc_dma_512.nes
+row start next dmc-at-oam-access oam-end-access
+00  get   512               521
+01  get   512               521
+02  get   514               521
+03  get   514               521
+04  get   514               521
+05  get   516               521
+06  get   518               521
+07  get   518               521
+08  get   518               521
+09  get   -                 523
+0A  get   -                 519
+0B  get   -                 519
+0C  get   -                 519
+0D  get   -                 519
+0E  get   -                 519
+0F  get   -                 519
+```
+
+A probe that removed the post-DMC OAM realignment cycle improved some normal-ROM collision rows but overshot other rows and made `_512` less consistent. This supports the earlier conclusion that the fix should be a stateful DMC/OAM DMA scheduler that can represent halt, dummy, alignment, DMC get, and OAM retry phases independently.

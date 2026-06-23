@@ -31,6 +31,7 @@ try
         "sample-frames" => SampleFrames(args),
         "diagnose-frame" => DiagnoseFrame(args),
         "trace-writes" => TraceWrites(args),
+        "trace-dma" => TraceDma(args),
         _ => UnknownCommand(args[0])
     };
 }
@@ -100,6 +101,8 @@ static void PrintUsage()
     Console.WriteLine("                   Print PPU and mapper state after running to a frame, optionally dumping binary PPU state.");
     Console.WriteLine("  trace-writes <rom.nes> [--frames 1] [--start-frame N] [--scanline-start N] [--scanline-end N] [--include-controller]");
     Console.WriteLine("                   Print PPU register and mapper writes with PPU timing.");
+    Console.WriteLine("  trace-dma <rom.nes> [--max-instructions 50000000] [--max-events 200]");
+    Console.WriteLine("                   Print OAM/DMC DMA events with current CPU instruction PC.");
 }
 
 static int RunTestRom(string[] args)
@@ -533,6 +536,56 @@ static int TraceWrites(string[] args)
     Console.WriteLine($"Instructions: {instructions}");
     Console.WriteLine($"Frame reached: {machine.PpuBus.Frame} (target {targetFrame})");
     return machine.PpuBus.Frame >= targetFrame ? 0 : 1;
+}
+
+static int TraceDma(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.Error.WriteLine("Usage: NesSharp.Cli trace-dma <rom.nes> [--max-instructions 50000000] [--max-events 200]");
+        return 1;
+    }
+
+    var maxInstructions = GetLongOption(args, "--max-instructions", 50_000_000);
+    var maxEvents = GetIntOption(args, "--max-events", 200);
+    var machine = NesMachine.LoadFile(args[1]);
+    machine.Reset();
+    var currentInstructionPc = machine.Cpu.ProgramCounter;
+    var events = 0;
+
+    machine.CpuBus.DmaObserved += entry =>
+    {
+        if (events >= maxEvents)
+        {
+            return;
+        }
+
+        events++;
+        Console.WriteLine(FormatDmaTrace(entry, currentInstructionPc, machine.Cpu.Cycles));
+    };
+
+    long instructions = 0;
+    while (instructions < maxInstructions && events < maxEvents)
+    {
+        currentInstructionPc = machine.Cpu.ProgramCounter;
+        machine.StepInstruction();
+        instructions++;
+    }
+
+    Console.WriteLine($"Traced DMA events: {events}");
+    Console.WriteLine($"Instructions: {instructions}");
+    Console.WriteLine($"CPU cycles: {machine.Cpu.Cycles}");
+    return events > 0 ? 0 : 1;
+}
+
+static string FormatDmaTrace(CpuBusDmaDebugEntry entry, ushort pc, ulong cpuCycles)
+{
+    var address = entry.Address is null ? "----" : $"${entry.Address:X4}";
+    var value = entry.Value is null ? "--" : $"${entry.Value:X2}";
+    var detail = entry.Detail is null ? "-" : entry.Detail.Value.ToString(CultureInfo.InvariantCulture);
+    return string.Create(
+        CultureInfo.InvariantCulture,
+        $"PC={pc:X4} CYC={cpuCycles} DMA={entry.Kind} addr={address} val={value} detail={detail} cpuAccess={entry.CpuAccessCycles} instrAccess={entry.InstructionAccessCycles} next={(entry.NextDmaCycleIsGet ? "get" : "put")} pending={entry.IsDmcPending}/{entry.IsDmcReady} dmc={entry.PendingDmcKind}@${entry.PendingDmcAddress:X4}");
 }
 
 static bool ShouldTraceRead(ushort address, bool includeController)

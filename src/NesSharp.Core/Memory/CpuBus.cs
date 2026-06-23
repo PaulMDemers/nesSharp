@@ -47,6 +47,8 @@ public sealed class CpuBus
 
     public event Action<CpuBusWriteDebugEntry>? WriteObserved;
 
+    public event Action<CpuBusDmaDebugEntry>? DmaObserved;
+
     private void InitializePowerOnRam()
     {
         for (var i = 0; i < ram.Length; i++)
@@ -313,7 +315,9 @@ public sealed class CpuBus
 
         ClockCpuAccess(instructionAccess: false);
         ApplyDmcReadConflict(haltedReadAddress, repeatedReadCount);
-        ApuBus.CompleteDmcDma(ReadRaw(address));
+        var value = ReadRaw(address);
+        ApuBus.CompleteDmcDma(value);
+        ObserveDma("dmc", address, value, repeatedReadCount);
         dmcDmaHaltRetry = false;
         dmcLoadDmaHaltDelayCycles = 0;
     }
@@ -329,7 +333,9 @@ public sealed class CpuBus
         var address = ApuBus.PendingDmcDmaAddress;
         ClockCpuAccess(instructionAccess: false);
         ClockCpuAccess(instructionAccess: false);
-        ApuBus.CompleteDmcDma(ReadRaw(address));
+        var value = ReadRaw(address);
+        ApuBus.CompleteDmcDma(value);
+        ObserveDma("dmc-write-overlap", address, value, 2);
         dmcDmaHaltRetry = false;
         dmcLoadDmaHaltDelayCycles = 0;
         deferReadyDmcDmaUntilNextWrite = false;
@@ -401,6 +407,7 @@ public sealed class CpuBus
     private void RunOamDma(byte page)
     {
         var baseAddress = page << 8;
+        ObserveDma("oam-start", (ushort)baseAddress, page, null);
         var setupCycles = nextDmaCycleIsGet ? 3 : 2;
         for (var i = 0; i < setupCycles; i++)
         {
@@ -419,6 +426,7 @@ public sealed class CpuBus
         }
 
         RunPendingDmcDma();
+        ObserveDma("oam-end", null, null, null);
     }
 
     private void RunDmcDmaDuringOamDma()
@@ -430,10 +438,41 @@ public sealed class CpuBus
 
         var address = ApuBus.PendingDmcDmaAddress;
         ClockCpuAccess(instructionAccess: false);
-        ApuBus.CompleteDmcDma(ReadRaw(address));
+        var value = ReadRaw(address);
+        ApuBus.CompleteDmcDma(value);
+        ObserveDma("dmc-during-oam", address, value, 2);
         ClockCpuAccess(instructionAccess: false);
     }
+
+    private void ObserveDma(string kind, ushort? address, int? value, int? detail)
+    {
+        DmaObserved?.Invoke(new CpuBusDmaDebugEntry(
+            kind,
+            address,
+            value,
+            detail,
+            CpuAccessCycles,
+            instructionAccessCycles,
+            nextDmaCycleIsGet,
+            ApuBus.PendingDmcDmaKind,
+            ApuBus.PendingDmcDmaAddress,
+            ApuBus.IsDmcDmaPending,
+            ApuBus.IsDmcDmaReady));
+    }
 }
+
+public readonly record struct CpuBusDmaDebugEntry(
+    string Kind,
+    ushort? Address,
+    int? Value,
+    int? Detail,
+    int CpuAccessCycles,
+    int InstructionAccessCycles,
+    bool NextDmaCycleIsGet,
+    DmcDmaKind PendingDmcKind,
+    ushort PendingDmcAddress,
+    bool IsDmcPending,
+    bool IsDmcReady);
 
 public readonly record struct CpuBusWriteDebugEntry(
     ushort Address,

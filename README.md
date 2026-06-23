@@ -27,6 +27,7 @@ Battery-backed saves are loaded from and written to a `.sav` file beside the ROM
 `render-frame` and `compare-frame` support 256x240 binary PPM (`P6`) and uncompressed 24-bit BMP files. MAME snapshots are commonly PNG files; convert those to BMP or PPM first, then compare the converted reference against nesSharp's rendered frame.
 Frame rendering commands also support `--input`, using semicolon-separated frame ranges like `60-90:Start;260-420:Right+B`.
 For local reference captures, MAME 0.288 can be installed under `tools\mame-0.288\mame.exe`; the `tools` folder is intentionally ignored by git. `scripts\capture-mame-frame.ps1` uses MAME Lua frame callbacks to capture exact reference frames, supports `-InputScript` with the same frame-range syntax as nesSharp, and converts MAME's PNG snapshot to BMP/PPM/PNG output.
+Use `dotnet run --project src\NesSharp.Cli -- trace-dma <rom.nes>` to inspect OAM/DMC DMA event timing while working on DMA overlap compatibility.
 
 ## Current Status
 
