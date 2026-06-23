@@ -232,35 +232,35 @@ Current OAM/DMC overlap summaries:
 
 ```text
 sprdma_and_dmc_dma.nes
-row start next dmc-at-oam-access oam-end-access
+row start next dmc-at-oam-index/access oam-end-access
 00  put   -                 518
 01  put   -                 518
 02  put   -                 518
 03  get   -                 523
 04  put   -                 521
 05  get   -                 521
-06  get   8                 521
-07  get   8                 521
-08  get   8                 521
-09  get   8                 521
-0A  get   10                521
-0B  get   10                521
-0C  get   12                521
-0D  get   12                521
-0E  get   14                521
-0F  get   14                521
+06  get   2/8               521
+07  get   2/8               521
+08  get   2/8               521
+09  get   2/8               521
+0A  get   3/10              521
+0B  get   3/10              521
+0C  get   4/12              521
+0D  get   4/12              521
+0E  get   5/14              521
+0F  get   5/14              521
 
 sprdma_and_dmc_dma_512.nes
-row start next dmc-at-oam-access oam-end-access
-00  get   512               521
-01  get   512               521
-02  get   514               521
-03  get   514               521
-04  get   514               521
-05  get   516               521
-06  get   518               521
-07  get   518               521
-08  get   518               521
+row start next dmc-at-oam-index/access oam-end-access
+00  get   252/512           521
+01  get   252/512           521
+02  get   253/514           521
+03  get   253/514           521
+04  get   253/514           521
+05  get   254/516           521
+06  get   255/518           521
+07  get   255/518           521
+08  get   255/518           521
 09  get   -                 523
 0A  get   -                 519
 0B  get   -                 519

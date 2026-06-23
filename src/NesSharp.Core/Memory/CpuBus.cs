@@ -416,7 +416,7 @@ public sealed class CpuBus
 
         for (var i = 0; i < 256; i++)
         {
-            RunDmcDmaDuringOamDma();
+            RunDmcDmaDuringOamDma(i);
 
             var value = ReadRaw((ushort)(baseAddress + i));
             ClockCpuAccess(instructionAccess: false);
@@ -429,7 +429,7 @@ public sealed class CpuBus
         ObserveDma("oam-end", null, null, null);
     }
 
-    private void RunDmcDmaDuringOamDma()
+    private void RunDmcDmaDuringOamDma(int oamIndex)
     {
         if (!ApuBus.IsDmcDmaReady)
         {
@@ -440,7 +440,7 @@ public sealed class CpuBus
         ClockCpuAccess(instructionAccess: false);
         var value = ReadRaw(address);
         ApuBus.CompleteDmcDma(value);
-        ObserveDma("dmc-during-oam", address, value, 2);
+        ObserveDma("dmc-during-oam", address, value, oamIndex);
         ClockCpuAccess(instructionAccess: false);
     }
 
