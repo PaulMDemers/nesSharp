@@ -17,6 +17,7 @@ public sealed class CpuBus
     private int dmcLoadDmaHaltDelayCycles;
     private bool deferReadyDmcDmaUntilNextWrite;
     private bool deferDmcDmaUntilWriteResolution;
+    private bool oamDmaStartedWithDmcReady;
     private byte openBus;
 
     public CpuBus(Cartridge.Cartridge cartridge)
@@ -407,6 +408,7 @@ public sealed class CpuBus
     private void RunOamDma(byte page)
     {
         var baseAddress = page << 8;
+        oamDmaStartedWithDmcReady = ApuBus.IsDmcDmaReady;
         ObserveDma("oam-start", (ushort)baseAddress, page, null);
         var setupCycles = nextDmaCycleIsGet ? 3 : 2;
         for (var i = 0; i < setupCycles; i++)
@@ -443,7 +445,11 @@ public sealed class CpuBus
             // forcing the usual DMC/OAM retry pair.
             var firstValue = ReadRaw(address);
             ApuBus.CompleteDmcDma(firstValue);
-            ObserveDma("dmc-during-oam", address, firstValue, oamIndex);
+            ObserveDma(
+                oamDmaStartedWithDmcReady ? "dmc-during-oam-start-ready" : "dmc-during-oam-setup-ready",
+                address,
+                firstValue,
+                oamIndex);
             return;
         }
 
