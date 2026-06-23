@@ -437,6 +437,16 @@ public sealed class CpuBus
         }
 
         var address = ApuBus.PendingDmcDmaAddress;
+        if (oamIndex == 0 && ApuBus.PendingDmcDmaKind == DmcDmaKind.Reload)
+        {
+            // A reload DMA that reaches the first OAM get slot can steal that read without
+            // forcing the usual DMC/OAM retry pair.
+            var firstValue = ReadRaw(address);
+            ApuBus.CompleteDmcDma(firstValue);
+            ObserveDma("dmc-during-oam", address, firstValue, oamIndex);
+            return;
+        }
+
         ClockCpuAccess(instructionAccess: false);
         var value = ReadRaw(address);
         ApuBus.CompleteDmcDma(value);

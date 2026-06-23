@@ -273,3 +273,29 @@ row start next dmc-at-oam-index/access oam-end-access
 A probe that removed the post-DMC OAM realignment cycle improved some normal-ROM collision rows but overshot other rows and made `_512` less consistent. This supports the earlier conclusion that the fix should be a stateful DMC/OAM DMA scheduler that can represent halt, dummy, alignment, DMC get, and OAM retry phases independently.
 
 A broader probe that skipped the reload-DMA alignment cycle globally made both `sprdma` ROMs time out before printing row 00. Reload fetches still need their normal alignment behavior in the sync loops; the remaining fix must be narrower than "all reload DMA is one cycle shorter."
+
+## First OAM read steal checkpoint
+
+Reload DMC DMA at OAM index 0 now steals the first OAM read slot without adding the usual DMC/OAM retry pair. This moves the normal ROM's first DMC-inside-OAM rows from `527/527/527/528` to `525/525/525/525`:
+
+```text
+sprdma_and_dmc_dma.nes
+00 527
+01 528
+02 527
+03 529
+04 527
+05 527
+06 525
+07 525
+08 525
+09 525
+0A 526
+0B 527
+0C 527
+0D 527
+0E 527
+0F 527
+```
+
+This is closer but still not complete: rows 07 and 09 are one cycle short, rows 0A-0F still drift high, and `_512` is unchanged. The remaining work is likely the same fine-sync/status-poll alignment problem rather than another broad OAM overlap rule.
