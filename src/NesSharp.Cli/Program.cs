@@ -647,6 +647,8 @@ static int ReportSprDma(string[] args)
                     currentRow.DmcKind = entry.Kind;
                     currentRow.DmcOamIndex = entry.Detail;
                     currentRow.DmcAccess = entry.CpuAccessCycles;
+                    currentRow.FirstPendingIndex = entry.OamDmcFirstPendingIndex;
+                    currentRow.FirstReadyIndex = entry.OamDmcFirstReadyIndex;
                 }
 
                 break;
@@ -698,7 +700,7 @@ static int ReportSprDma(string[] args)
     var actual = ParseSprDmaTimingRows(output);
     var expected = IsSprDma512(args[1]) ? SprDmaReportData.Expected512 : SprDmaReportData.ExpectedNormal;
 
-    Console.WriteLine("row actual expected diff start pending/ready dmc-index/access dmc-kind oam-end status-r/w status10/0");
+    Console.WriteLine("row actual expected diff start pending/ready first-p/r dmc-index/access dmc-kind oam-end status-r/w status10/0");
     for (var i = 0; i < Math.Min(16, Math.Max(actual.Length, rows.Count)); i++)
     {
         var row = i < rows.Count ? rows[i] : null;
@@ -710,6 +712,9 @@ static int ReportSprDma(string[] args)
         var dmcText = row?.DmcOamIndex is null
             ? "-"
             : $"{row.DmcOamIndex}/{row.DmcAccess}";
+        var firstText = row?.FirstPendingIndex is null && row?.FirstReadyIndex is null
+            ? "-"
+            : $"{FormatNullableInt(row?.FirstPendingIndex)}/{FormatNullableInt(row?.FirstReadyIndex)}";
         var startText = row?.StartNext ?? "-";
         var pendingText = row is null ? "-" : $"{row.StartPending}/{row.StartReady}";
         var kindText = row?.DmcKind ?? "-";
@@ -718,7 +723,7 @@ static int ReportSprDma(string[] args)
         var statusValues = row is null ? "-" : $"{row.StatusDmcActiveReads}/{row.StatusDmcInactiveReads}";
 
         Console.WriteLine(
-            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,5} {pendingText,13} {dmcText,16} {kindText,-26} {oamEndText,7} {statusReadWrite,10} {statusValues,10}");
+            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,5} {pendingText,13} {firstText,9} {dmcText,16} {kindText,-26} {oamEndText,7} {statusReadWrite,10} {statusValues,10}");
     }
 
     Console.WriteLine($"Instructions: {instructions}");
@@ -752,6 +757,11 @@ static void TrackStatusWrite(SprDmaTraceRow? row)
     }
 
     row.StatusWrites++;
+}
+
+static string FormatNullableInt(int? value)
+{
+    return value?.ToString(CultureInfo.InvariantCulture) ?? "-";
 }
 
 static string FormatStatusTrace(string kind, ushort address, byte value, ushort pc, ulong cpuCycles)
@@ -1645,6 +1655,10 @@ internal sealed class SprDmaTraceRow(int row)
     public int? DmcOamIndex { get; set; }
 
     public int? DmcAccess { get; set; }
+
+    public int? FirstPendingIndex { get; set; }
+
+    public int? FirstReadyIndex { get; set; }
 
     public int? OamEndAccess { get; set; }
 

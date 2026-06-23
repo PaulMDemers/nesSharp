@@ -228,7 +228,7 @@ Normal ROM after the exact `$4014` write-overlap checkpoint:
 
 `NesSharp.Cli trace-dma` records the current instruction PC, approximate CPU cycle, OAM DMA start/end, ordinary DMC reads, write-overlap DMC reads, and DMC reads that occur during OAM DMA. Passing `--include-status` also includes `$4015` status reads and writes so the DMC sync loops can be correlated with the DMA events. This is intended to keep future DMA work tied to event positions rather than only the final pass/fail table.
 
-`NesSharp.Cli sprdma-report <rom.nes>` runs either `sprdma` ROM and prints the 16 measured rows with actual/expected/diff columns plus the OAM start phase, DMC pending/ready state, DMC OAM index/access, OAM end access, and post-OAM `$4015` status read/write counts. This is the quickest way to compare timing probes now that the remaining differences are row-specific.
+`NesSharp.Cli sprdma-report <rom.nes>` runs either `sprdma` ROM and prints the 16 measured rows with actual/expected/diff columns plus the OAM start phase, DMC pending/ready state, first OAM index where DMC was pending/ready, DMC OAM index/access, OAM end access, and post-OAM `$4015` status read/write counts. This is the quickest way to compare timing probes now that the remaining differences are row-specific.
 
 Current OAM/DMC overlap summaries:
 
@@ -355,3 +355,5 @@ Reload DMC DMA at OAM indices 2-3 now uses the same no-final-realignment path as
 ```
 
 This reduces the normal ROM's absolute row error from 12 to 8 without changing the `_512` checkpoint table.
+
+A follow-up probe tried skipping the final OAM realignment for early indices 2-3 only when the DMC request was already pending before the serviced OAM byte. It improved the immediate low rows but shifted the following DMC service point and worsened the normal ROM overall, so the simpler index 2-3 rule remains in place.

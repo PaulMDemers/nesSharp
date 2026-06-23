@@ -18,6 +18,8 @@ public sealed class CpuBus
     private bool deferReadyDmcDmaUntilNextWrite;
     private bool deferDmcDmaUntilWriteResolution;
     private bool oamDmaStartedWithDmcReady;
+    private int? oamDmcFirstPendingIndex;
+    private int? oamDmcFirstReadyIndex;
     private byte openBus;
 
     public CpuBus(Cartridge.Cartridge cartridge)
@@ -409,6 +411,8 @@ public sealed class CpuBus
     {
         var baseAddress = page << 8;
         oamDmaStartedWithDmcReady = ApuBus.IsDmcDmaReady;
+        oamDmcFirstPendingIndex = null;
+        oamDmcFirstReadyIndex = null;
         ObserveDma("oam-start", (ushort)baseAddress, page, null);
         var setupCycles = nextDmaCycleIsGet ? 3 : 2;
         for (var i = 0; i < setupCycles; i++)
@@ -418,6 +422,7 @@ public sealed class CpuBus
 
         for (var i = 0; i < 256; i++)
         {
+            TrackOamDmcState(i);
             RunDmcDmaDuringOamDma(i);
 
             var value = ReadRaw((ushort)(baseAddress + i));
@@ -458,8 +463,10 @@ public sealed class CpuBus
         var value = ReadRaw(address);
         ApuBus.CompleteDmcDma(value);
         ObserveDma("dmc-during-oam", address, value, oamIndex);
+        var skipsEarlyReloadRealignment = oamIndex is >= 2 and <= 3;
+        var skipsLateReloadRealignment = oamIndex is >= 252 and <= 254;
         var skipsFinalRealignment = dmcKind == DmcDmaKind.Reload &&
-            (oamIndex is >= 2 and <= 3 || oamIndex is >= 252 and <= 254);
+            (skipsEarlyReloadRealignment || skipsLateReloadRealignment);
         if (skipsFinalRealignment)
         {
             // Some reload fetches can occupy the DMC get slot without the final
@@ -468,6 +475,19 @@ public sealed class CpuBus
         }
 
         ClockCpuAccess(instructionAccess: false);
+    }
+
+    private void TrackOamDmcState(int oamIndex)
+    {
+        if (oamDmcFirstPendingIndex is null && ApuBus.IsDmcDmaPending)
+        {
+            oamDmcFirstPendingIndex = oamIndex;
+        }
+
+        if (oamDmcFirstReadyIndex is null && ApuBus.IsDmcDmaReady)
+        {
+            oamDmcFirstReadyIndex = oamIndex;
+        }
     }
 
     private void ObserveDma(string kind, ushort? address, int? value, int? detail)
@@ -483,7 +503,9 @@ public sealed class CpuBus
             ApuBus.PendingDmcDmaKind,
             ApuBus.PendingDmcDmaAddress,
             ApuBus.IsDmcDmaPending,
-            ApuBus.IsDmcDmaReady));
+            ApuBus.IsDmcDmaReady,
+            oamDmcFirstPendingIndex,
+            oamDmcFirstReadyIndex));
     }
 }
 
@@ -498,7 +520,9 @@ public readonly record struct CpuBusDmaDebugEntry(
     DmcDmaKind PendingDmcKind,
     ushort PendingDmcAddress,
     bool IsDmcPending,
-    bool IsDmcReady);
+    bool IsDmcReady,
+    int? OamDmcFirstPendingIndex,
+    int? OamDmcFirstReadyIndex);
 
 public readonly record struct CpuBusWriteDebugEntry(
     ushort Address,
