@@ -620,6 +620,7 @@ static int ReportSprDma(string[] args)
     machine.Reset();
     var rows = new List<SprDmaTraceRow>();
     SprDmaTraceRow? currentRow = null;
+    SprDmaTraceRow? postOamRow = null;
 
     machine.CpuBus.DmaObserved += entry =>
     {
@@ -654,11 +655,32 @@ static int ReportSprDma(string[] args)
                 {
                     currentRow.OamEndAccess = entry.CpuAccessCycles;
                     rows.Add(currentRow);
+                    postOamRow = currentRow;
                     currentRow = null;
                 }
 
                 break;
         }
+    };
+
+    machine.CpuBus.ReadObserved += entry =>
+    {
+        if (entry.Address != 0x4015 || rows.Count >= 16)
+        {
+            return;
+        }
+
+        TrackStatusRead(postOamRow, entry.Value);
+    };
+
+    machine.CpuBus.WriteObserved += entry =>
+    {
+        if (entry.Address != 0x4015 || rows.Count >= 16)
+        {
+            return;
+        }
+
+        TrackStatusWrite(postOamRow);
     };
 
     long instructions;
@@ -676,7 +698,7 @@ static int ReportSprDma(string[] args)
     var actual = ParseSprDmaTimingRows(output);
     var expected = IsSprDma512(args[1]) ? SprDmaReportData.Expected512 : SprDmaReportData.ExpectedNormal;
 
-    Console.WriteLine("row actual expected diff start pending/ready dmc-index/access dmc-kind oam-end");
+    Console.WriteLine("row actual expected diff start pending/ready dmc-index/access dmc-kind oam-end status-r/w status10/0");
     for (var i = 0; i < Math.Min(16, Math.Max(actual.Length, rows.Count)); i++)
     {
         var row = i < rows.Count ? rows[i] : null;
@@ -692,14 +714,44 @@ static int ReportSprDma(string[] args)
         var pendingText = row is null ? "-" : $"{row.StartPending}/{row.StartReady}";
         var kindText = row?.DmcKind ?? "-";
         var oamEndText = row?.OamEndAccess?.ToString(CultureInfo.InvariantCulture) ?? "-";
+        var statusReadWrite = row is null ? "-" : $"{row.StatusReads}/{row.StatusWrites}";
+        var statusValues = row is null ? "-" : $"{row.StatusDmcActiveReads}/{row.StatusDmcInactiveReads}";
 
         Console.WriteLine(
-            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,5} {pendingText,13} {dmcText,16} {kindText,-26} {oamEndText}");
+            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,5} {pendingText,13} {dmcText,16} {kindText,-26} {oamEndText,7} {statusReadWrite,10} {statusValues,10}");
     }
 
     Console.WriteLine($"Instructions: {instructions}");
     Console.WriteLine($"Status: {(IsBlarggComplete(machine) ? machine.CpuBus.ReadRaw(SprDmaReportData.BlarggStatusAddress).ToString("X2", CultureInfo.InvariantCulture) : "timeout")}");
     return actual.Length > 0 ? 0 : 1;
+}
+
+static void TrackStatusRead(SprDmaTraceRow? row, byte value)
+{
+    if (row is null)
+    {
+        return;
+    }
+
+    row.StatusReads++;
+    if ((value & 0x10) != 0)
+    {
+        row.StatusDmcActiveReads++;
+    }
+    else
+    {
+        row.StatusDmcInactiveReads++;
+    }
+}
+
+static void TrackStatusWrite(SprDmaTraceRow? row)
+{
+    if (row is null)
+    {
+        return;
+    }
+
+    row.StatusWrites++;
 }
 
 static string FormatStatusTrace(string kind, ushort address, byte value, ushort pc, ulong cpuCycles)
@@ -1595,6 +1647,14 @@ internal sealed class SprDmaTraceRow(int row)
     public int? DmcAccess { get; set; }
 
     public int? OamEndAccess { get; set; }
+
+    public int StatusReads { get; set; }
+
+    public int StatusWrites { get; set; }
+
+    public int StatusDmcActiveReads { get; set; }
+
+    public int StatusDmcInactiveReads { get; set; }
 }
 
 internal static class SprDmaReportData
