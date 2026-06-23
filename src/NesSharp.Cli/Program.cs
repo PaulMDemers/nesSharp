@@ -32,6 +32,7 @@ try
         "diagnose-frame" => DiagnoseFrame(args),
         "trace-writes" => TraceWrites(args),
         "trace-dma" => TraceDma(args),
+        "sprdma-report" => ReportSprDma(args),
         _ => UnknownCommand(args[0])
     };
 }
@@ -103,6 +104,8 @@ static void PrintUsage()
     Console.WriteLine("                   Print PPU register and mapper writes with PPU timing.");
     Console.WriteLine("  trace-dma <rom.nes> [--max-instructions 50000000] [--max-events 200] [--include-status]");
     Console.WriteLine("                   Print OAM/DMC DMA events with current CPU instruction PC.");
+    Console.WriteLine("  sprdma-report <rom.nes> [--max-instructions 20000000]");
+    Console.WriteLine("                   Print compact row timing for sprdma_and_dmc_dma test ROMs.");
 }
 
 static int RunTestRom(string[] args)
@@ -604,6 +607,101 @@ static int TraceDma(string[] args)
     return events > 0 ? 0 : 1;
 }
 
+static int ReportSprDma(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.Error.WriteLine("Usage: NesSharp.Cli sprdma-report <rom.nes> [--max-instructions 20000000]");
+        return 1;
+    }
+
+    var maxInstructions = GetLongOption(args, "--max-instructions", 20_000_000);
+    var machine = NesMachine.LoadFile(args[1]);
+    machine.Reset();
+    var rows = new List<SprDmaTraceRow>();
+    SprDmaTraceRow? currentRow = null;
+
+    machine.CpuBus.DmaObserved += entry =>
+    {
+        switch (entry.Kind)
+        {
+            case "oam-start":
+                if (rows.Count >= 16)
+                {
+                    return;
+                }
+
+                currentRow = new SprDmaTraceRow(rows.Count)
+                {
+                    StartNext = entry.NextDmaCycleIsGet ? "get" : "put",
+                    StartPending = entry.IsDmcPending,
+                    StartReady = entry.IsDmcReady
+                };
+                break;
+            case "dmc-during-oam":
+            case "dmc-during-oam-start-ready":
+            case "dmc-during-oam-setup-ready":
+                if (currentRow is not null)
+                {
+                    currentRow.DmcKind = entry.Kind;
+                    currentRow.DmcOamIndex = entry.Detail;
+                    currentRow.DmcAccess = entry.CpuAccessCycles;
+                }
+
+                break;
+            case "oam-end":
+                if (currentRow is not null)
+                {
+                    currentRow.OamEndAccess = entry.CpuAccessCycles;
+                    rows.Add(currentRow);
+                    currentRow = null;
+                }
+
+                break;
+        }
+    };
+
+    long instructions;
+    for (instructions = 0; instructions < maxInstructions; instructions++)
+    {
+        if (IsBlarggComplete(machine))
+        {
+            break;
+        }
+
+        machine.StepInstruction();
+    }
+
+    var output = ReadBlarggOutput(machine);
+    var actual = ParseSprDmaTimingRows(output);
+    var expected = IsSprDma512(args[1]) ? SprDmaReportData.Expected512 : SprDmaReportData.ExpectedNormal;
+
+    Console.WriteLine("row actual expected diff start pending/ready dmc-index/access dmc-kind oam-end");
+    for (var i = 0; i < Math.Min(16, Math.Max(actual.Length, rows.Count)); i++)
+    {
+        var row = i < rows.Count ? rows[i] : null;
+        var actualText = i < actual.Length ? actual[i].ToString(CultureInfo.InvariantCulture) : "-";
+        var expectedText = i < expected.Length ? expected[i].ToString(CultureInfo.InvariantCulture) : "-";
+        var diffText = i < actual.Length && i < expected.Length
+            ? (actual[i] - expected[i]).ToString(CultureInfo.InvariantCulture)
+            : "-";
+        var dmcText = row?.DmcOamIndex is null
+            ? "-"
+            : $"{row.DmcOamIndex}/{row.DmcAccess}";
+        var startText = row?.StartNext ?? "-";
+        var pendingText = row is null ? "-" : $"{row.StartPending}/{row.StartReady}";
+        var kindText = row?.DmcKind ?? "-";
+        var oamEndText = row?.OamEndAccess?.ToString(CultureInfo.InvariantCulture) ?? "-";
+
+        Console.WriteLine(
+            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,5} {pendingText,13} {dmcText,16} {kindText,-26} {oamEndText}");
+    }
+
+    Console.WriteLine($"Instructions: {instructions}");
+    Console.WriteLine($"Status: {(IsBlarggComplete(machine) ? machine.CpuBus.ReadRaw(SprDmaReportData.BlarggStatusAddress).ToString("X2", CultureInfo.InvariantCulture) : "timeout")}");
+    return actual.Length > 0 ? 0 : 1;
+}
+
 static string FormatStatusTrace(string kind, ushort address, byte value, ushort pc, ulong cpuCycles)
 {
     return string.Create(
@@ -866,6 +964,60 @@ static long GetLongOption(string[] args, string name, long defaultValue)
 static bool HasOption(string[] args, string name)
 {
     return args.Contains(name, StringComparer.Ordinal);
+}
+
+static bool IsBlarggComplete(NesMachine machine)
+{
+    return machine.CpuBus.ReadRaw(SprDmaReportData.BlarggSignatureAddress) == 0xDE &&
+        machine.CpuBus.ReadRaw(SprDmaReportData.BlarggSignatureAddress + 1) == 0xB0 &&
+        machine.CpuBus.ReadRaw(SprDmaReportData.BlarggSignatureAddress + 2) == 0x61 &&
+        machine.CpuBus.ReadRaw(SprDmaReportData.BlarggStatusAddress) <= 0x7F;
+}
+
+static string ReadBlarggOutput(NesMachine machine)
+{
+    var chars = new List<char>();
+    for (var i = 0; i < SprDmaReportData.BlarggMaxTextLength; i++)
+    {
+        var value = machine.CpuBus.ReadRaw((ushort)(SprDmaReportData.BlarggTextAddress + i));
+        if (value == 0)
+        {
+            break;
+        }
+
+        chars.Add(value is >= 0x20 and <= 0x7E or 0x0A or 0x0D or 0x09 ? (char)value : '.');
+    }
+
+    return new string(chars.ToArray());
+}
+
+static int[] ParseSprDmaTimingRows(string output)
+{
+    var rows = new List<int>();
+    foreach (var line in output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+    {
+        var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2 ||
+            !byte.TryParse(parts[0], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var row) ||
+            !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var cycles) ||
+            row != rows.Count)
+        {
+            continue;
+        }
+
+        rows.Add(cycles);
+        if (rows.Count == 16)
+        {
+            break;
+        }
+    }
+
+    return rows.ToArray();
+}
+
+static bool IsSprDma512(string path)
+{
+    return Path.GetFileNameWithoutExtension(path).Contains("512", StringComparison.OrdinalIgnoreCase);
 }
 
 static string? GetOption(string[] args, string name)
@@ -1425,3 +1577,46 @@ internal readonly record struct FrameDiffResult(
     int DifferingPixels,
     int MaxChannelDelta,
     long TotalAbsoluteChannelDelta);
+
+internal sealed class SprDmaTraceRow(int row)
+{
+    public int Row { get; } = row;
+
+    public string StartNext { get; init; } = "-";
+
+    public bool StartPending { get; init; }
+
+    public bool StartReady { get; init; }
+
+    public string? DmcKind { get; set; }
+
+    public int? DmcOamIndex { get; set; }
+
+    public int? DmcAccess { get; set; }
+
+    public int? OamEndAccess { get; set; }
+}
+
+internal static class SprDmaReportData
+{
+    public const ushort BlarggStatusAddress = 0x6000;
+    public const ushort BlarggSignatureAddress = 0x6001;
+    public const ushort BlarggTextAddress = 0x6004;
+    public const int BlarggMaxTextLength = 0x1FFC;
+
+    public static readonly int[] ExpectedNormal =
+    [
+        527, 528, 527, 528,
+        527, 526, 525, 526,
+        525, 526, 525, 526,
+        525, 526, 525, 526
+    ];
+
+    public static readonly int[] Expected512 =
+    [
+        525, 526, 525, 526,
+        524, 525, 526, 527,
+        527, 528, 526, 527,
+        527, 528, 527, 528
+    ];
+}

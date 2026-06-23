@@ -228,6 +228,8 @@ Normal ROM after the exact `$4014` write-overlap checkpoint:
 
 `NesSharp.Cli trace-dma` records the current instruction PC, approximate CPU cycle, OAM DMA start/end, ordinary DMC reads, write-overlap DMC reads, and DMC reads that occur during OAM DMA. Passing `--include-status` also includes `$4015` status reads and writes so the DMC sync loops can be correlated with the DMA events. This is intended to keep future DMA work tied to event positions rather than only the final pass/fail table.
 
+`NesSharp.Cli sprdma-report <rom.nes>` runs either `sprdma` ROM and prints the 16 measured rows with actual/expected/diff columns plus the OAM start phase, DMC pending/ready state, DMC OAM index/access, and OAM end access. This is the quickest way to compare timing probes now that the remaining differences are row-specific.
+
 Current OAM/DMC overlap summaries:
 
 ```text
