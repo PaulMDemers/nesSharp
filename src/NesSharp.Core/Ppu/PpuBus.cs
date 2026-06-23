@@ -54,6 +54,8 @@ public sealed class PpuBus
     private int lastBackgroundShiftPixels;
     private int lastBackgroundFallbackPixels;
     private int lastBackgroundCurrentAddressTransparentPixels;
+    private ushort forcedBlankPaletteAddress;
+    private ulong forcedBlankPaletteAddressUntilDot;
 
     public PpuBus(Cartridge.Cartridge cartridge)
     {
@@ -261,6 +263,8 @@ public sealed class PpuBus
         lastBackgroundShiftPixels = 0;
         lastBackgroundFallbackPixels = 0;
         lastBackgroundCurrentAddressTransparentPixels = 0;
+        forcedBlankPaletteAddress = 0;
+        forcedBlankPaletteAddressUntilDot = 0;
         Array.Clear(backgroundShiftPixelsByScanline);
         Array.Clear(backgroundFallbackPixelsByScanline);
         Array.Clear(backgroundCurrentAddressTransparentPixelsByScanline);
@@ -757,7 +761,15 @@ public sealed class PpuBus
 
     private void WritePpuData(byte value)
     {
-        WriteMemory((ushort)(currentVramAddress & 0x3FFF), value);
+        var address = (ushort)(currentVramAddress & 0x3FFF);
+        if (address >= 0x3F00)
+        {
+            // During forced blanking, palette accesses can drive the output color for this CPU access.
+            forcedBlankPaletteAddress = address;
+            forcedBlankPaletteAddressUntilDot = TotalDots + 3;
+        }
+
+        WriteMemory(address, value);
         IncrementVramAddress();
     }
 
@@ -995,6 +1007,12 @@ public sealed class PpuBus
 
         var x = Dot - 1;
         var y = Scanline;
+        if (!IsRenderingEnabled && TotalDots <= forcedBlankPaletteAddressUntilDot)
+        {
+            framebuffer[y * ScreenWidth + x] = ReadPaletteEntry(forcedBlankPaletteAddress);
+            return;
+        }
+
         var backgroundPixel = GetBackgroundPixelWithPalette(x, y);
         var spritePixel = GetSpritePixelWithPalette(x, y);
         framebuffer[y * ScreenWidth + x] = ComposePixel(backgroundPixel, spritePixel);
