@@ -453,10 +453,18 @@ public sealed class CpuBus
             return;
         }
 
+        var dmcKind = ApuBus.PendingDmcDmaKind;
         ClockCpuAccess(instructionAccess: false);
         var value = ReadRaw(address);
         ApuBus.CompleteDmcDma(value);
         ObserveDma("dmc-during-oam", address, value, oamIndex);
+        if (oamIndex is >= 252 and <= 254 && dmcKind == DmcDmaKind.Reload)
+        {
+            // Late reload fetches can occupy the DMC get slot without the final
+            // OAM realignment cycle; byte 255 keeps the normal trailing cycle.
+            return;
+        }
+
         ClockCpuAccess(instructionAccess: false);
     }
 

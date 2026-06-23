@@ -299,3 +299,30 @@ sprdma_and_dmc_dma.nes
 ```
 
 This is closer but still not complete: rows 07 and 09 are one cycle short, rows 0A-0F still drift high, and `_512` is unchanged. The remaining work is likely the same fine-sync/status-poll alignment problem rather than another broad OAM overlap rule.
+
+## Late OAM reload checkpoint
+
+Reload DMC DMA at OAM indices 252-254 now skips the final OAM realignment cycle. Index 255 keeps the normal trailing cycle; a 252-253-only probe left rows 04 and 05 too high, while applying the rule through 255 overshot rows 06-08 and disturbed the later rows more.
+
+`sprdma_and_dmc_dma_512.nes` after this checkpoint:
+
+```text
+00 525
+01 525
+02 525
+03 525
+04 525
+05 525
+06 527
+07 527
+08 528
+09 529
+0A 527
+0B 529
+0C 527
+0D 527
+0E 527
+0F 529
+```
+
+This reduces the `_512` absolute row error from 20 to 11 without changing the normal ROM's current table.
