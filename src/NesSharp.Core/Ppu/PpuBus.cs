@@ -867,7 +867,7 @@ public sealed class PpuBus
                 nametableRam[MapNametableAddress(address)] = value;
                 break;
             case >= 0x3F00 and <= 0x3FFF:
-                paletteRam[MapPaletteAddress(address)] = value;
+                paletteRam[MapPaletteAddress(address)] = (byte)(value & 0x3F);
                 break;
         }
     }

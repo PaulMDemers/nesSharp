@@ -133,6 +133,16 @@ public sealed class PpuBackgroundRenderingTests
     }
 
     [Fact]
+    public void PaletteWritesStoreSixBitColorValue()
+    {
+        var ppu = CreatePpu();
+
+        WritePalette(ppu, 0x3F03, 0x40);
+
+        Assert.Equal(0x00, ppu.CaptureDebugState().PaletteRam[0x03]);
+    }
+
+    [Fact]
     public void ScrollBackgroundUsesScheduledShifterAfterFetch()
     {
         var ppu = CreatePpu();
