@@ -6,7 +6,9 @@ param(
     [string]$MameStateDirectory,
 
     [ValidateSet("Horizontal", "Vertical", "OneScreenLower", "OneScreenUpper")]
-    [string]$Mirroring = "Horizontal"
+    [string]$Mirroring = "Horizontal",
+
+    [switch]$ComparePattern
 )
 
 $ErrorActionPreference = "Stop"
@@ -90,3 +92,9 @@ foreach ($mirror in @(0x10, 0x14, 0x18, 0x1C)) {
 Write-DiffSummary "nametable" $nesNametableLogical $mameNametableLogical 0x2000
 Write-DiffSummary "palette" $nesPaletteLogical $mamePaletteLogical 0x3F00
 Write-DiffSummary "oam/cpu-0200" $nesOam $mameCpuOamPage 0x0000
+
+if ($ComparePattern) {
+    $nesPattern = Read-RequiredBytes (Join-Path $NesSharpStateDirectory "chr.bin")
+    $mamePattern = Read-RequiredBytes (Join-Path $MameStateDirectory "pattern.bin")
+    Write-DiffSummary "pattern" $nesPattern $mamePattern 0x0000
+}

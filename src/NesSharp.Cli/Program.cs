@@ -457,7 +457,7 @@ static int DiagnoseFrame(string[] args)
     var dumpStateDirectory = GetOption(args, "--dump-state-dir");
     if (!string.IsNullOrWhiteSpace(dumpStateDirectory))
     {
-        WriteFrameDiagnosisDump(result.Machine.PpuBus.CaptureDebugState(), dumpStateDirectory);
+        WriteFrameDiagnosisDump(result.Machine, dumpStateDirectory);
     }
 
     return 0;
@@ -662,12 +662,14 @@ static void PrintFrameDiagnosis(MachineFrameResult result)
     }
 }
 
-static void WriteFrameDiagnosisDump(PpuDebugState ppu, string directory)
+static void WriteFrameDiagnosisDump(NesMachine machine, string directory)
 {
+    var ppu = machine.PpuBus.CaptureDebugState();
     Directory.CreateDirectory(directory);
     File.WriteAllBytes(Path.Combine(directory, "palette.bin"), ppu.PaletteRam);
     File.WriteAllBytes(Path.Combine(directory, "nametable.bin"), ppu.NametableRam);
     File.WriteAllBytes(Path.Combine(directory, "oam.bin"), ppu.Oam);
+    File.WriteAllBytes(Path.Combine(directory, "chr.bin"), machine.Cartridge.ChrMemory);
     Console.WriteLine($"PPU state dump: {Path.GetFullPath(directory)}");
 }
 

@@ -153,6 +153,7 @@ _G.capture_state_sub = emu.add_machine_frame_notifier(function()
     if _G.capture_state_frame == target_frame then
         dump(out_dir .. "/nametable-logical.bin", ppu_videoram, 0x2000, 0x1000)
         dump(out_dir .. "/palette-logical.bin", ppu_videoram, 0x3f00, 0x0020)
+        dump(out_dir .. "/pattern.bin", ppu_videoram, 0x0000, 0x2000)
         dump(out_dir .. "/cpu-0200.bin", cpu_program, 0x0200, 0x0100)
         print("captured state " .. target_frame)
         manager.machine:exit()
