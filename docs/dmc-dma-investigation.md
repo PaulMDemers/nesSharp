@@ -328,3 +328,30 @@ Reload DMC DMA at OAM indices 252-254 now skips the final OAM realignment cycle.
 ```
 
 This reduces the `_512` absolute row error from 20 to 11 without changing the normal ROM's current table.
+
+## Early indexed OAM reload checkpoint
+
+Reload DMC DMA at OAM indices 2-3 now uses the same no-final-realignment path as the late 252-254 edge. Applying the rule to index 1 as well produced the same total error but moved row 0B from one cycle high to one cycle low, so the narrower 2-3 rule is retained for now.
+
+`sprdma_and_dmc_dma.nes` after this checkpoint:
+
+```text
+00 527
+01 528
+02 527
+03 529
+04 527
+05 527
+06 525
+07 525
+08 525
+09 525
+0A 526
+0B 527
+0C 525
+0D 525
+0E 525
+0F 525
+```
+
+This reduces the normal ROM's absolute row error from 12 to 8 without changing the `_512` checkpoint table.
