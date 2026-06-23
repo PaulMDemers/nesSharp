@@ -226,7 +226,7 @@ Normal ROM after the exact `$4014` write-overlap checkpoint:
 
 ## DMA trace checkpoint
 
-`NesSharp.Cli trace-dma` records the current instruction PC, approximate CPU cycle, OAM DMA start/end, ordinary DMC reads, write-overlap DMC reads, and DMC reads that occur during OAM DMA. This is intended to keep future DMA work tied to event positions rather than only the final pass/fail table.
+`NesSharp.Cli trace-dma` records the current instruction PC, approximate CPU cycle, OAM DMA start/end, ordinary DMC reads, write-overlap DMC reads, and DMC reads that occur during OAM DMA. Passing `--include-status` also includes `$4015` status reads and writes so the DMC sync loops can be correlated with the DMA events. This is intended to keep future DMA work tied to event positions rather than only the final pass/fail table.
 
 Current OAM/DMC overlap summaries:
 
@@ -239,16 +239,16 @@ row start next dmc-at-oam-index/access oam-end-access
 03  get   -                 523
 04  put   -                 521
 05  get   -                 521
-06  get   2/8               521
-07  get   2/8               521
-08  get   2/8               521
-09  get   2/8               521
-0A  get   3/10              521
-0B  get   3/10              521
-0C  get   4/12              521
-0D  get   4/12              521
-0E  get   5/14              521
-0F  get   5/14              521
+06  get   0/8               521
+07  get   0/8               521
+08  get   0/8               521
+09  get   0/8               521
+0A  get   1/10              521
+0B  get   1/10              521
+0C  get   2/12              521
+0D  get   2/12              521
+0E  get   3/14              521
+0F  get   3/14              521
 
 sprdma_and_dmc_dma_512.nes
 row start next dmc-at-oam-index/access oam-end-access
@@ -271,3 +271,5 @@ row start next dmc-at-oam-index/access oam-end-access
 ```
 
 A probe that removed the post-DMC OAM realignment cycle improved some normal-ROM collision rows but overshot other rows and made `_512` less consistent. This supports the earlier conclusion that the fix should be a stateful DMC/OAM DMA scheduler that can represent halt, dummy, alignment, DMC get, and OAM retry phases independently.
+
+A broader probe that skipped the reload-DMA alignment cycle globally made both `sprdma` ROMs time out before printing row 00. Reload fetches still need their normal alignment behavior in the sync loops; the remaining fix must be narrower than "all reload DMA is one cycle shorter."

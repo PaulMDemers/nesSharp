@@ -101,7 +101,7 @@ static void PrintUsage()
     Console.WriteLine("                   Print PPU and mapper state after running to a frame, optionally dumping binary PPU state.");
     Console.WriteLine("  trace-writes <rom.nes> [--frames 1] [--start-frame N] [--scanline-start N] [--scanline-end N] [--include-controller]");
     Console.WriteLine("                   Print PPU register and mapper writes with PPU timing.");
-    Console.WriteLine("  trace-dma <rom.nes> [--max-instructions 50000000] [--max-events 200]");
+    Console.WriteLine("  trace-dma <rom.nes> [--max-instructions 50000000] [--max-events 200] [--include-status]");
     Console.WriteLine("                   Print OAM/DMC DMA events with current CPU instruction PC.");
 }
 
@@ -542,12 +542,13 @@ static int TraceDma(string[] args)
 {
     if (args.Length < 2)
     {
-        Console.Error.WriteLine("Usage: NesSharp.Cli trace-dma <rom.nes> [--max-instructions 50000000] [--max-events 200]");
+        Console.Error.WriteLine("Usage: NesSharp.Cli trace-dma <rom.nes> [--max-instructions 50000000] [--max-events 200] [--include-status]");
         return 1;
     }
 
     var maxInstructions = GetLongOption(args, "--max-instructions", 50_000_000);
     var maxEvents = GetIntOption(args, "--max-events", 200);
+    var includeStatus = HasOption(args, "--include-status");
     var machine = NesMachine.LoadFile(args[1]);
     machine.Reset();
     var currentInstructionPc = machine.Cpu.ProgramCounter;
@@ -564,6 +565,31 @@ static int TraceDma(string[] args)
         Console.WriteLine(FormatDmaTrace(entry, currentInstructionPc, machine.Cpu.Cycles));
     };
 
+    if (includeStatus)
+    {
+        machine.CpuBus.ReadObserved += entry =>
+        {
+            if (events >= maxEvents || entry.Address != 0x4015)
+            {
+                return;
+            }
+
+            events++;
+            Console.WriteLine(FormatStatusTrace("read", entry.Address, entry.Value, currentInstructionPc, machine.Cpu.Cycles));
+        };
+
+        machine.CpuBus.WriteObserved += entry =>
+        {
+            if (events >= maxEvents || entry.Address != 0x4015)
+            {
+                return;
+            }
+
+            events++;
+            Console.WriteLine(FormatStatusTrace("write", entry.Address, entry.Value, currentInstructionPc, machine.Cpu.Cycles));
+        };
+    }
+
     long instructions = 0;
     while (instructions < maxInstructions && events < maxEvents)
     {
@@ -576,6 +602,13 @@ static int TraceDma(string[] args)
     Console.WriteLine($"Instructions: {instructions}");
     Console.WriteLine($"CPU cycles: {machine.Cpu.Cycles}");
     return events > 0 ? 0 : 1;
+}
+
+static string FormatStatusTrace(string kind, ushort address, byte value, ushort pc, ulong cpuCycles)
+{
+    return string.Create(
+        CultureInfo.InvariantCulture,
+        $"PC={pc:X4} CYC={cpuCycles} STATUS={kind} addr=${address:X4} val=${value:X2}");
 }
 
 static string FormatDmaTrace(CpuBusDmaDebugEntry entry, ushort pc, ulong cpuCycles)
@@ -828,6 +861,11 @@ static long GetLongOption(string[] args, string name, long defaultValue)
 {
     var value = GetOption(args, name);
     return value is null ? defaultValue : long.Parse(value, CultureInfo.InvariantCulture);
+}
+
+static bool HasOption(string[] args, string name)
+{
+    return args.Contains(name, StringComparer.Ordinal);
 }
 
 static string? GetOption(string[] args, string name)
