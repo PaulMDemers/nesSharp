@@ -444,30 +444,27 @@ public sealed class CpuBus
         }
 
         var address = ApuBus.PendingDmcDmaAddress;
-        if (oamIndex == 0 && ApuBus.PendingDmcDmaKind == DmcDmaKind.Reload)
+        var dmcKind = ApuBus.PendingDmcDmaKind;
+        var plan = OamDmcDmaTiming.Plan(oamIndex, dmcKind, oamDmaStartedWithDmcReady);
+        if (plan.StealsFirstOamReadWithoutRetry)
         {
             // A reload DMA that reaches the first OAM get slot can steal that read without
             // forcing the usual DMC/OAM retry pair.
             var firstValue = ReadRaw(address);
             ApuBus.CompleteDmcDma(firstValue);
             ObserveDma(
-                oamDmaStartedWithDmcReady ? "dmc-during-oam-start-ready" : "dmc-during-oam-setup-ready",
+                plan.ObservationKind,
                 address,
                 firstValue,
                 oamIndex);
             return;
         }
 
-        var dmcKind = ApuBus.PendingDmcDmaKind;
         ClockCpuAccess(instructionAccess: false);
         var value = ReadRaw(address);
         ApuBus.CompleteDmcDma(value);
-        ObserveDma("dmc-during-oam", address, value, oamIndex);
-        var skipsEarlyReloadRealignment = oamIndex is >= 2 and <= 3;
-        var skipsLateReloadRealignment = oamIndex is >= 252 and <= 254;
-        var skipsFinalRealignment = dmcKind == DmcDmaKind.Reload &&
-            (skipsEarlyReloadRealignment || skipsLateReloadRealignment);
-        if (skipsFinalRealignment)
+        ObserveDma(plan.ObservationKind, address, value, oamIndex);
+        if (plan.SkipsFinalRealignment)
         {
             // Some reload fetches can occupy the DMC get slot without the final
             // OAM realignment cycle. Bytes 1 and 255 keep the normal trailing cycle.
