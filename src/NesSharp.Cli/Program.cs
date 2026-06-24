@@ -638,7 +638,9 @@ static int ReportSprDma(string[] args)
                 {
                     StartNext = entry.NextDmaCycleIsGet ? "get" : "put",
                     StartPending = entry.IsDmcPending,
-                    StartReady = entry.IsDmcReady
+                    StartReady = entry.IsDmcReady,
+                    StartAccess = entry.CpuAccessCycles,
+                    StartInstructionAccess = entry.InstructionAccessCycles
                 };
                 if (lastDmcEntry is not null)
                 {
@@ -717,7 +719,7 @@ static int ReportSprDma(string[] args)
     var actual = ParseSprDmaTimingRows(output);
     var expected = IsSprDma512(args[1]) ? SprDmaReportData.Expected512 : SprDmaReportData.ExpectedNormal;
 
-    Console.WriteLine("row actual expected diff start pending/ready first-p/r dmc-index/access dmc-kind pre-dmc oam-end status-r/w status10/0");
+    Console.WriteLine("row actual expected diff start/access pending/ready first-p/r dmc-index/access dmc-kind pre-dmc oam-end status-r/w status10/0");
     for (var i = 0; i < Math.Min(16, Math.Max(actual.Length, rows.Count)); i++)
     {
         var row = i < rows.Count ? rows[i] : null;
@@ -732,7 +734,7 @@ static int ReportSprDma(string[] args)
         var firstText = row?.FirstPendingIndex is null && row?.FirstReadyIndex is null
             ? "-"
             : $"{FormatNullableInt(row?.FirstPendingIndex)}/{FormatNullableInt(row?.FirstReadyIndex)}";
-        var startText = row?.StartNext ?? "-";
+        var startText = row is null ? "-" : $"{row.StartNext}/{row.StartAccess}/{row.StartInstructionAccess}";
         var pendingText = row is null ? "-" : $"{row.StartPending}/{row.StartReady}";
         var kindText = row?.DmcKind ?? "-";
         var preDmcText = FormatPreOamDmc(row);
@@ -741,7 +743,7 @@ static int ReportSprDma(string[] args)
         var statusValues = row is null ? "-" : $"{row.StatusDmcActiveReads}/{row.StatusDmcInactiveReads}";
 
         Console.WriteLine(
-            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,5} {pendingText,13} {firstText,9} {dmcText,16} {kindText,-26} {preDmcText,20} {oamEndText,7} {statusReadWrite,10} {statusValues,10}");
+            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,12} {pendingText,13} {firstText,9} {dmcText,16} {kindText,-26} {preDmcText,20} {oamEndText,7} {statusReadWrite,10} {statusValues,10}");
     }
 
     Console.WriteLine($"Instructions: {instructions}");
@@ -1675,6 +1677,10 @@ internal sealed class SprDmaTraceRow(int row)
     public int Row { get; } = row;
 
     public string StartNext { get; init; } = "-";
+
+    public int StartAccess { get; init; }
+
+    public int StartInstructionAccess { get; init; }
 
     public bool StartPending { get; init; }
 
