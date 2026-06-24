@@ -621,6 +621,8 @@ static int ReportSprDma(string[] args)
     var rows = new List<SprDmaTraceRow>();
     SprDmaTraceRow? currentRow = null;
     SprDmaTraceRow? postOamRow = null;
+    CpuBusDmaDebugEntry? lastDmcEntry = null;
+    ulong lastDmcCycle = 0;
 
     machine.CpuBus.DmaObserved += entry =>
     {
@@ -638,6 +640,15 @@ static int ReportSprDma(string[] args)
                     StartPending = entry.IsDmcPending,
                     StartReady = entry.IsDmcReady
                 };
+                if (lastDmcEntry is not null)
+                {
+                    currentRow.PreOamDmcKind = lastDmcEntry.Value.Kind;
+                    currentRow.PreOamDmcDetail = lastDmcEntry.Value.Detail;
+                    currentRow.PreOamDmcAccess = lastDmcEntry.Value.CpuAccessCycles;
+                    currentRow.PreOamDmcInstructionAccess = lastDmcEntry.Value.InstructionAccessCycles;
+                    currentRow.PreOamDmcCycleDelta = machine.Cpu.Cycles - lastDmcCycle;
+                }
+
                 break;
             case "dmc-during-oam":
             case "dmc-during-oam-start-ready":
@@ -662,6 +673,12 @@ static int ReportSprDma(string[] args)
                 }
 
                 break;
+        }
+
+        if (entry.Kind.StartsWith("dmc", StringComparison.Ordinal))
+        {
+            lastDmcEntry = entry;
+            lastDmcCycle = machine.Cpu.Cycles;
         }
     };
 
@@ -700,7 +717,7 @@ static int ReportSprDma(string[] args)
     var actual = ParseSprDmaTimingRows(output);
     var expected = IsSprDma512(args[1]) ? SprDmaReportData.Expected512 : SprDmaReportData.ExpectedNormal;
 
-    Console.WriteLine("row actual expected diff start pending/ready first-p/r dmc-index/access dmc-kind oam-end status-r/w status10/0");
+    Console.WriteLine("row actual expected diff start pending/ready first-p/r dmc-index/access dmc-kind pre-dmc oam-end status-r/w status10/0");
     for (var i = 0; i < Math.Min(16, Math.Max(actual.Length, rows.Count)); i++)
     {
         var row = i < rows.Count ? rows[i] : null;
@@ -718,12 +735,13 @@ static int ReportSprDma(string[] args)
         var startText = row?.StartNext ?? "-";
         var pendingText = row is null ? "-" : $"{row.StartPending}/{row.StartReady}";
         var kindText = row?.DmcKind ?? "-";
+        var preDmcText = FormatPreOamDmc(row);
         var oamEndText = row?.OamEndAccess?.ToString(CultureInfo.InvariantCulture) ?? "-";
         var statusReadWrite = row is null ? "-" : $"{row.StatusReads}/{row.StatusWrites}";
         var statusValues = row is null ? "-" : $"{row.StatusDmcActiveReads}/{row.StatusDmcInactiveReads}";
 
         Console.WriteLine(
-            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,5} {pendingText,13} {firstText,9} {dmcText,16} {kindText,-26} {oamEndText,7} {statusReadWrite,10} {statusValues,10}");
+            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,5} {pendingText,13} {firstText,9} {dmcText,16} {kindText,-26} {preDmcText,20} {oamEndText,7} {statusReadWrite,10} {statusValues,10}");
     }
 
     Console.WriteLine($"Instructions: {instructions}");
@@ -762,6 +780,18 @@ static void TrackStatusWrite(SprDmaTraceRow? row)
 static string FormatNullableInt(int? value)
 {
     return value?.ToString(CultureInfo.InvariantCulture) ?? "-";
+}
+
+static string FormatPreOamDmc(SprDmaTraceRow? row)
+{
+    if (row?.PreOamDmcKind is null)
+    {
+        return "-";
+    }
+
+    return string.Create(
+        CultureInfo.InvariantCulture,
+        $"{row.PreOamDmcKind}:{FormatNullableInt(row.PreOamDmcDetail)}/{FormatNullableInt(row.PreOamDmcAccess)}/{FormatNullableInt(row.PreOamDmcInstructionAccess)}+{row.PreOamDmcCycleDelta}");
 }
 
 static string FormatStatusTrace(string kind, ushort address, byte value, ushort pc, ulong cpuCycles)
@@ -1659,6 +1689,16 @@ internal sealed class SprDmaTraceRow(int row)
     public int? FirstPendingIndex { get; set; }
 
     public int? FirstReadyIndex { get; set; }
+
+    public string? PreOamDmcKind { get; set; }
+
+    public int? PreOamDmcDetail { get; set; }
+
+    public int? PreOamDmcAccess { get; set; }
+
+    public int? PreOamDmcInstructionAccess { get; set; }
+
+    public ulong PreOamDmcCycleDelta { get; set; }
 
     public int? OamEndAccess { get; set; }
 
