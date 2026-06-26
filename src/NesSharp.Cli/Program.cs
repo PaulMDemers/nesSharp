@@ -637,6 +637,7 @@ static int ReportSprDma(string[] args)
                 currentRow = new SprDmaTraceRow(rows.Count)
                 {
                     StartNext = entry.NextDmaCycleIsGet ? "get" : "put",
+                    StartNextIsGet = entry.NextDmaCycleIsGet,
                     StartPending = entry.IsDmcPending,
                     StartReady = entry.IsDmcReady,
                     StartAccess = entry.CpuAccessCycles,
@@ -721,7 +722,7 @@ static int ReportSprDma(string[] args)
     var actual = ParseSprDmaTimingRows(output);
     var expected = IsSprDma512(args[1]) ? SprDmaReportData.Expected512 : SprDmaReportData.ExpectedNormal;
 
-    Console.WriteLine("row actual expected diff start/access pending/ready setup-p/r first-p/r dmc-index/access dmc-kind pre-dmc oam-end status-r/w status10/0");
+    Console.WriteLine("row actual expected diff start/access pending/ready setup-p/r first-p/r dmc-index/access sched-dmc/end dmc-kind pre-dmc oam-end status-r/w status10/0");
     for (var i = 0; i < Math.Min(16, Math.Max(actual.Length, rows.Count)); i++)
     {
         var row = i < rows.Count ? rows[i] : null;
@@ -742,13 +743,14 @@ static int ReportSprDma(string[] args)
         var startText = row is null ? "-" : $"{row.StartNext}/{row.StartAccess}/{row.StartInstructionAccess}";
         var pendingText = row is null ? "-" : $"{row.StartPending}/{row.StartReady}";
         var kindText = row?.DmcKind ?? "-";
+        var schedulerText = FormatSchedulerShadow(row);
         var preDmcText = FormatPreOamDmc(row);
         var oamEndText = row?.OamEndAccess?.ToString(CultureInfo.InvariantCulture) ?? "-";
         var statusReadWrite = row is null ? "-" : $"{row.StatusReads}/{row.StatusWrites}";
         var statusValues = row is null ? "-" : $"{row.StatusDmcActiveReads}/{row.StatusDmcInactiveReads}";
 
         Console.WriteLine(
-            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,12} {pendingText,13} {setupText,9} {firstText,9} {dmcText,16} {kindText,-26} {preDmcText,20} {oamEndText,7} {statusReadWrite,10} {statusValues,10}");
+            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,12} {pendingText,13} {setupText,9} {firstText,9} {dmcText,16} {schedulerText,13} {kindText,-26} {preDmcText,20} {oamEndText,7} {statusReadWrite,10} {statusValues,10}");
     }
 
     Console.WriteLine($"Instructions: {instructions}");
@@ -800,6 +802,58 @@ static string FormatPreOamDmc(SprDmaTraceRow? row)
         CultureInfo.InvariantCulture,
         $"{row.PreOamDmcKind}:{FormatNullableInt(row.PreOamDmcDetail)}/{FormatNullableInt(row.PreOamDmcAccess)}/{FormatNullableInt(row.PreOamDmcInstructionAccess)}+{row.PreOamDmcCycleDelta}");
 }
+
+static string FormatSchedulerShadow(SprDmaTraceRow? row)
+{
+    if (row is null)
+    {
+        return "-";
+    }
+
+    var dmcStartCycle = EstimateSchedulerDmcStartCycle(row);
+    if (dmcStartCycle is null)
+    {
+        return "-";
+    }
+
+    var schedule = CpuDmaScheduler.Simulate(new CpuDmaScheduleRequest(
+        row.StartNextIsGet,
+        OamByteCount: 256,
+        dmcStartCycle));
+    var dmcRead = schedule.Events.FirstOrDefault(e => e.Kind == CpuDmaCycleKind.DmcRead);
+    if (dmcRead.Kind != CpuDmaCycleKind.DmcRead)
+    {
+        return "-";
+    }
+
+    var observedDmc = row.DmcAccess is null ? "-" : (row.DmcAccess.Value - row.StartAccess).ToString(CultureInfo.InvariantCulture);
+    var observedEnd = row.OamEndAccess is null ? "-" : (row.OamEndAccess.Value - row.StartAccess).ToString(CultureInfo.InvariantCulture);
+    return string.Create(
+        CultureInfo.InvariantCulture,
+        $"{dmcRead.Cycle}/{observedDmc}:{schedule.CycleCount}/{observedEnd}");
+}
+
+static int? EstimateSchedulerDmcStartCycle(SprDmaTraceRow row)
+{
+    if (row.DmcKind is null)
+    {
+        return null;
+    }
+
+    if (row.FirstReadySetupCycle is not null)
+    {
+        return row.FirstReadySetupCycle.Value;
+    }
+
+    if (row.FirstReadyIndex is not null)
+    {
+        return OamSetupCycleCount(row.StartNextIsGet) + row.FirstReadyIndex.Value * 2;
+    }
+
+    return null;
+}
+
+static int OamSetupCycleCount(bool startNextIsGet) => startNextIsGet ? 3 : 2;
 
 static string FormatStatusTrace(string kind, ushort address, byte value, ushort pc, ulong cpuCycles)
 {
@@ -1688,6 +1742,8 @@ internal sealed class SprDmaTraceRow(int row)
     public int Row { get; } = row;
 
     public string StartNext { get; init; } = "-";
+
+    public bool StartNextIsGet { get; init; }
 
     public int StartAccess { get; init; }
 
