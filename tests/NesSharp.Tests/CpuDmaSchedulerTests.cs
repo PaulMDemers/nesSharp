@@ -45,6 +45,47 @@ public sealed class CpuDmaSchedulerTests
         Assert.Equal(2, schedule.Events.Single(e => e.Kind == CpuDmaCycleKind.DmcRead).Cycle);
     }
 
+    [Fact]
+    public void DmcAndOamDmaStartingTogetherOnGetCycleRunsDmcBeforeOam()
+    {
+        var schedule = CpuDmaScheduler.Simulate(new CpuDmaScheduleRequest(
+            FirstCycleIsGet: true,
+            OamByteCount: 2,
+            DmcStartCycle: 0));
+
+        Assert.Equal(
+            [
+                CpuDmaCycleKind.DummyRead,
+                CpuDmaCycleKind.DummyRead,
+                CpuDmaCycleKind.DmcRead,
+                CpuDmaCycleKind.DummyRead,
+                CpuDmaCycleKind.OamRead,
+                CpuDmaCycleKind.OamWrite
+            ],
+            schedule.Events.Take(6).Select(e => e.Kind).ToArray());
+    }
+
+    [Fact]
+    public void DmcAndOamDmaStartingTogetherOnPutCycleAllowsFirstOamByteBeforeDmcRead()
+    {
+        var schedule = CpuDmaScheduler.Simulate(new CpuDmaScheduleRequest(
+            FirstCycleIsGet: false,
+            OamByteCount: 2,
+            DmcStartCycle: 0));
+
+        Assert.Equal(
+            [
+                CpuDmaCycleKind.DummyRead,
+                CpuDmaCycleKind.OamRead,
+                CpuDmaCycleKind.OamWrite,
+                CpuDmaCycleKind.DmcRead,
+                CpuDmaCycleKind.DummyRead,
+                CpuDmaCycleKind.OamRead,
+                CpuDmaCycleKind.OamWrite
+            ],
+            schedule.Events.Select(e => e.Kind).ToArray());
+    }
+
     [Theory]
     [InlineData(CpuDmaDmcState.NeedHalt, false, 3)]
     [InlineData(CpuDmaDmcState.NeedHalt, true, 2)]
