@@ -1,3 +1,4 @@
+using NesSharp.Core.Apu;
 using NesSharp.Core.Cartridge;
 using NesSharp.Core.Cpu;
 using NesSharp.Core.Memory;
@@ -337,6 +338,106 @@ public sealed class CpuBusTests
     }
 
     [Fact]
+    public void OamDmaReportsDmcServiceOffsetWhenDmcIsReadyOnPutBoundary()
+    {
+        var bus = new CpuBus(CreateCartridgeWithResetVector());
+        bus.WriteRaw(0x4013, 0x00);
+        bus.WriteRaw(0x4015, 0x10);
+        bus.ApuBus.Clock();
+
+        var entries = new List<CpuBusDmaDebugEntry>();
+        bus.DmaObserved += entries.Add;
+
+        bus.BeginCpuInstruction();
+        bus.Write(0x4014, 0x02);
+        bus.EndCpuInstruction();
+
+        var start = entries.Single(e => e.Kind == "oam-start");
+        var dmc = entries.Single(e => e.Kind.StartsWith("dmc-during-oam", StringComparison.Ordinal));
+        var end = entries.Single(e => e.Kind == "oam-end");
+
+        Assert.False(start.NextDmaCycleIsGet);
+        Assert.Equal(0, dmc.Detail);
+        Assert.Equal(5, dmc.CpuAccessCycles - start.CpuAccessCycles);
+        Assert.Equal(516, end.CpuAccessCycles - start.CpuAccessCycles);
+    }
+
+    [Fact]
+    public void OamDmaReportsDmcServiceOffsetWhenDmcIsReadyOnGetBoundary()
+    {
+        var bus = new CpuBus(CreateCartridgeWithResetVector());
+        bus.WriteRaw(0x4013, 0x00);
+        bus.WriteRaw(0x4015, 0x10);
+        bus.ApuBus.Clock();
+
+        var entries = new List<CpuBusDmaDebugEntry>();
+        bus.DmaObserved += entries.Add;
+
+        bus.BeginCpuInstruction();
+        bus.AdvanceDmaPhase();
+        bus.Write(0x4014, 0x02);
+        bus.EndCpuInstruction();
+
+        var start = entries.Single(e => e.Kind == "oam-start");
+        var dmc = entries.Single(e => e.Kind.StartsWith("dmc-during-oam", StringComparison.Ordinal));
+        var end = entries.Single(e => e.Kind == "oam-end");
+
+        Assert.True(start.NextDmaCycleIsGet);
+        Assert.Equal(0, dmc.Detail);
+        Assert.Equal(6, dmc.CpuAccessCycles - start.CpuAccessCycles);
+        Assert.Equal(517, end.CpuAccessCycles - start.CpuAccessCycles);
+    }
+
+    [Fact]
+    public void OamDmaReportsReloadDmcServiceOffsetWhenDmcIsReadyOnPutBoundary()
+    {
+        var bus = new CpuBus(CreateCartridgeWithResetVector());
+        PrepareReloadDmcDma(bus.ApuBus);
+
+        var entries = new List<CpuBusDmaDebugEntry>();
+        bus.DmaObserved += entries.Add;
+
+        bus.BeginCpuInstruction();
+        bus.Write(0x4014, 0x02);
+        bus.EndCpuInstruction();
+
+        var start = entries.Single(e => e.Kind == "oam-start");
+        var dmc = entries.Single(e => e.Kind.StartsWith("dmc-during-oam", StringComparison.Ordinal));
+        var end = entries.Single(e => e.Kind == "oam-end");
+
+        Assert.False(start.NextDmaCycleIsGet);
+        Assert.Equal("dmc-during-oam-start-ready", dmc.Kind);
+        Assert.Equal(0, dmc.Detail);
+        Assert.Equal(2, dmc.CpuAccessCycles - start.CpuAccessCycles);
+        Assert.Equal(514, end.CpuAccessCycles - start.CpuAccessCycles);
+    }
+
+    [Fact]
+    public void OamDmaReportsReloadDmcServiceOffsetWhenDmcIsReadyOnGetBoundary()
+    {
+        var bus = new CpuBus(CreateCartridgeWithResetVector());
+        PrepareReloadDmcDma(bus.ApuBus);
+
+        var entries = new List<CpuBusDmaDebugEntry>();
+        bus.DmaObserved += entries.Add;
+
+        bus.BeginCpuInstruction();
+        bus.AdvanceDmaPhase();
+        bus.Write(0x4014, 0x02);
+        bus.EndCpuInstruction();
+
+        var start = entries.Single(e => e.Kind == "oam-start");
+        var dmc = entries.Single(e => e.Kind.StartsWith("dmc-during-oam", StringComparison.Ordinal));
+        var end = entries.Single(e => e.Kind == "oam-end");
+
+        Assert.True(start.NextDmaCycleIsGet);
+        Assert.Equal("dmc-during-oam-start-ready", dmc.Kind);
+        Assert.Equal(0, dmc.Detail);
+        Assert.Equal(3, dmc.CpuAccessCycles - start.CpuAccessCycles);
+        Assert.Equal(515, end.CpuAccessCycles - start.CpuAccessCycles);
+    }
+
+    [Fact]
     public void DmcDmaDuringPpuDataReadRepeatsSideEffectReads()
     {
         var bus = new CpuBus(CreateCartridgeWithResetVector());
@@ -360,6 +461,36 @@ public sealed class CpuBusTests
     private static Cartridge CreateCartridgeWithResetVector(ushort resetVector = 0x8000)
     {
         return CreateCartridgeWithVectors(resetVector);
+    }
+
+    private static void PrepareReloadDmcDma(ApuBus apu)
+    {
+        apu.WriteRegister(0x4010, 0x0F);
+        apu.WriteRegister(0x4011, 64);
+        apu.WriteRegister(0x4013, 0x01);
+        apu.WriteRegister(0x4015, 0x10);
+        ClockDmcDmaReady(apu);
+        Assert.Equal(DmcDmaKind.Load, apu.PendingDmcDmaKind);
+        apu.CompleteDmcDma(0x55);
+        ClockDmcTimerTicks(apu, 8);
+        ClockDmcDmaReady(apu);
+        Assert.True(apu.IsDmcDmaReady);
+        Assert.Equal(DmcDmaKind.Reload, apu.PendingDmcDmaKind);
+    }
+
+    private static void ClockDmcTimerTicks(ApuBus apu, int ticks)
+    {
+        var cycles = 1 + (ticks - 1) * apu.Dmc.TimerPeriod;
+        for (var i = 0; i < cycles; i++)
+        {
+            apu.Clock();
+        }
+    }
+
+    private static void ClockDmcDmaReady(ApuBus apu)
+    {
+        apu.Clock();
+        apu.Clock();
     }
 
     private static Cartridge CreateCartridgeWithVectors(

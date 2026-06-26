@@ -6,9 +6,10 @@ public static class OamDmcDmaTiming
 {
     public static OamDmcDmaServicePlan Plan(int oamIndex, DmcDmaKind dmcKind, bool oamDmaStartedWithDmcReady)
     {
-        var stealsFirstOamReadWithoutRetry = oamIndex == 0 && dmcKind == DmcDmaKind.Reload;
+        var firstOamReload = oamIndex == 0 && dmcKind == DmcDmaKind.Reload;
+        var stealsFirstOamReadWithoutRetry = firstOamReload;
         var runsAfterOamByte = !stealsFirstOamReadWithoutRetry;
-        var observationKind = stealsFirstOamReadWithoutRetry
+        var observationKind = firstOamReload
             ? oamDmaStartedWithDmcReady ? "dmc-during-oam-start-ready" : "dmc-during-oam-setup-ready"
             : "dmc-during-oam";
 
