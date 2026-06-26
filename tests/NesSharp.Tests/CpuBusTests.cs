@@ -438,6 +438,75 @@ public sealed class CpuBusTests
     }
 
     [Fact]
+    public void OamDmaReportsReloadDmcServiceOffsetWhenDmcBecomesReadyDuringSetupOnPutBoundary()
+    {
+        var bus = new CpuBus(CreateCartridgeWithResetVector());
+        PreparePendingReloadDmcDma(bus.ApuBus);
+        bus.SetCpuCycleCallback(() =>
+        {
+            if (bus.CpuAccessCycles > 1 && bus.ApuBus.IsDmcDmaPending)
+            {
+                bus.ApuBus.Clock();
+            }
+        });
+
+        var entries = new List<CpuBusDmaDebugEntry>();
+        bus.DmaObserved += entries.Add;
+
+        bus.BeginCpuInstruction();
+        bus.Write(0x4014, 0x02);
+        bus.EndCpuInstruction();
+
+        var start = entries.Single(e => e.Kind == "oam-start");
+        var dmc = entries.First(e => e.Kind.StartsWith("dmc-during-oam", StringComparison.Ordinal));
+        var end = entries.Single(e => e.Kind == "oam-end");
+
+        Assert.False(start.NextDmaCycleIsGet);
+        Assert.True(start.IsDmcPending);
+        Assert.False(start.IsDmcReady);
+        Assert.Equal("dmc-during-oam-setup-ready", dmc.Kind);
+        Assert.Equal(0, dmc.OamDmcFirstReadySetupCycle);
+        Assert.Equal(0, dmc.Detail);
+        Assert.Equal(2, dmc.CpuAccessCycles - start.CpuAccessCycles);
+        Assert.Equal(514, end.CpuAccessCycles - start.CpuAccessCycles);
+    }
+
+    [Fact]
+    public void OamDmaReportsReloadDmcServiceOffsetWhenDmcBecomesReadyDuringSetupOnGetBoundary()
+    {
+        var bus = new CpuBus(CreateCartridgeWithResetVector());
+        PreparePendingReloadDmcDma(bus.ApuBus);
+        bus.SetCpuCycleCallback(() =>
+        {
+            if (bus.CpuAccessCycles > 1 && bus.ApuBus.IsDmcDmaPending)
+            {
+                bus.ApuBus.Clock();
+            }
+        });
+
+        var entries = new List<CpuBusDmaDebugEntry>();
+        bus.DmaObserved += entries.Add;
+
+        bus.BeginCpuInstruction();
+        bus.AdvanceDmaPhase();
+        bus.Write(0x4014, 0x02);
+        bus.EndCpuInstruction();
+
+        var start = entries.Single(e => e.Kind == "oam-start");
+        var dmc = entries.First(e => e.Kind.StartsWith("dmc-during-oam", StringComparison.Ordinal));
+        var end = entries.Single(e => e.Kind == "oam-end");
+
+        Assert.True(start.NextDmaCycleIsGet);
+        Assert.True(start.IsDmcPending);
+        Assert.False(start.IsDmcReady);
+        Assert.Equal("dmc-during-oam-setup-ready", dmc.Kind);
+        Assert.Equal(0, dmc.OamDmcFirstReadySetupCycle);
+        Assert.Equal(0, dmc.Detail);
+        Assert.Equal(3, dmc.CpuAccessCycles - start.CpuAccessCycles);
+        Assert.Equal(515, end.CpuAccessCycles - start.CpuAccessCycles);
+    }
+
+    [Fact]
     public void DmcDmaDuringPpuDataReadRepeatsSideEffectReads()
     {
         var bus = new CpuBus(CreateCartridgeWithResetVector());
@@ -465,6 +534,14 @@ public sealed class CpuBusTests
 
     private static void PrepareReloadDmcDma(ApuBus apu)
     {
+        PreparePendingReloadDmcDma(apu);
+        ClockDmcDmaReady(apu);
+        Assert.True(apu.IsDmcDmaReady);
+        Assert.Equal(DmcDmaKind.Reload, apu.PendingDmcDmaKind);
+    }
+
+    private static void PreparePendingReloadDmcDma(ApuBus apu)
+    {
         apu.WriteRegister(0x4010, 0x0F);
         apu.WriteRegister(0x4011, 64);
         apu.WriteRegister(0x4013, 0x01);
@@ -472,19 +549,25 @@ public sealed class CpuBusTests
         ClockDmcDmaReady(apu);
         Assert.Equal(DmcDmaKind.Load, apu.PendingDmcDmaKind);
         apu.CompleteDmcDma(0x55);
-        ClockDmcTimerTicks(apu, 8);
-        ClockDmcDmaReady(apu);
-        Assert.True(apu.IsDmcDmaReady);
+        ClockUntilPendingReloadDmcDma(apu);
+        Assert.True(apu.IsDmcDmaPending);
+        Assert.False(apu.IsDmcDmaReady);
         Assert.Equal(DmcDmaKind.Reload, apu.PendingDmcDmaKind);
     }
 
-    private static void ClockDmcTimerTicks(ApuBus apu, int ticks)
+    private static void ClockUntilPendingReloadDmcDma(ApuBus apu)
     {
-        var cycles = 1 + (ticks - 1) * apu.Dmc.TimerPeriod;
-        for (var i = 0; i < cycles; i++)
+        var maxCycles = 1 + 8 * apu.Dmc.TimerPeriod;
+        for (var i = 0; i < maxCycles; i++)
         {
             apu.Clock();
+            if (apu.IsDmcDmaPending && apu.PendingDmcDmaKind == DmcDmaKind.Reload)
+            {
+                return;
+            }
         }
+
+        throw new InvalidOperationException("DMC reload DMA did not become pending.");
     }
 
     private static void ClockDmcDmaReady(ApuBus apu)
