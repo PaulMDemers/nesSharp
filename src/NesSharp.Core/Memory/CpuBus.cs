@@ -458,7 +458,7 @@ public sealed class CpuBus
         }
 
         var plan = OamDmcDmaTiming.Plan(oamIndex, ApuBus.PendingDmcDmaKind, oamDmaStartedWithDmcReady);
-        return !plan.StealsFirstOamReadWithoutRetry;
+        return plan.RunsAfterOamByte;
     }
 
     private void RunDmcDmaDuringOamDma(int oamIndex)

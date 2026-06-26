@@ -17,6 +17,18 @@ public sealed class OamDmcDmaTimingTests
     }
 
     [Theory]
+    [InlineData(0, DmcDmaKind.Reload, false)]
+    [InlineData(0, DmcDmaKind.Load, true)]
+    [InlineData(1, DmcDmaKind.Reload, true)]
+    [InlineData(253, DmcDmaKind.Reload, true)]
+    public void OnlyFirstOamReloadRunsBeforeTheOamByte(int oamIndex, DmcDmaKind dmcKind, bool expected)
+    {
+        var plan = OamDmcDmaTiming.Plan(oamIndex, dmcKind, oamDmaStartedWithDmcReady: true);
+
+        Assert.Equal(expected, plan.RunsAfterOamByte);
+    }
+
+    [Theory]
     [InlineData(true, "dmc-during-oam-start-ready")]
     [InlineData(false, "dmc-during-oam-setup-ready")]
     public void FirstOamReloadLabelsHowItBecameReady(bool startedReady, string expectedKind)

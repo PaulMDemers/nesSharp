@@ -7,12 +7,14 @@ public static class OamDmcDmaTiming
     public static OamDmcDmaServicePlan Plan(int oamIndex, DmcDmaKind dmcKind, bool oamDmaStartedWithDmcReady)
     {
         var stealsFirstOamReadWithoutRetry = oamIndex == 0 && dmcKind == DmcDmaKind.Reload;
+        var runsAfterOamByte = !stealsFirstOamReadWithoutRetry;
         var observationKind = stealsFirstOamReadWithoutRetry
             ? oamDmaStartedWithDmcReady ? "dmc-during-oam-start-ready" : "dmc-during-oam-setup-ready"
             : "dmc-during-oam";
 
         return new OamDmcDmaServicePlan(
             stealsFirstOamReadWithoutRetry,
+            runsAfterOamByte,
             ShouldSkipFinalRealignment(oamIndex, dmcKind),
             observationKind);
     }
@@ -30,5 +32,6 @@ public static class OamDmcDmaTiming
 
 public readonly record struct OamDmcDmaServicePlan(
     bool StealsFirstOamReadWithoutRetry,
+    bool RunsAfterOamByte,
     bool SkipsFinalRealignment,
     string ObservationKind);
