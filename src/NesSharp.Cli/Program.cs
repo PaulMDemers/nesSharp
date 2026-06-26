@@ -643,7 +643,8 @@ static int ReportSprDma(string[] args)
                     StartDmcHaltRetry = entry.DmcHaltRetry,
                     StartDmcLoadDelay = entry.DmcLoadHaltDelayCycles,
                     StartAccess = entry.CpuAccessCycles,
-                    StartInstructionAccess = entry.InstructionAccessCycles
+                    StartInstructionAccess = entry.InstructionAccessCycles,
+                    StartTotalAccess = entry.TotalCpuAccessCycles
                 };
                 if (lastDmcEntry is not null)
                 {
@@ -663,6 +664,7 @@ static int ReportSprDma(string[] args)
                     currentRow.DmcKind = entry.Kind;
                     currentRow.DmcOamIndex = entry.Detail;
                     currentRow.DmcAccess = entry.CpuAccessCycles;
+                    currentRow.DmcTotalAccess = entry.TotalCpuAccessCycles;
                     currentRow.FirstPendingSetupCycle = entry.OamDmcFirstPendingSetupCycle;
                     currentRow.FirstReadySetupCycle = entry.OamDmcFirstReadySetupCycle;
                     currentRow.FirstPendingIndex = entry.OamDmcFirstPendingIndex;
@@ -676,6 +678,7 @@ static int ReportSprDma(string[] args)
                 if (currentRow is not null)
                 {
                     currentRow.OamEndAccess = entry.CpuAccessCycles;
+                    currentRow.OamEndTotalAccess = entry.TotalCpuAccessCycles;
                     rows.Add(currentRow);
                     postOamRow = currentRow;
                     currentRow = null;
@@ -698,7 +701,7 @@ static int ReportSprDma(string[] args)
             return;
         }
 
-        TrackStatusRead(postOamRow, entry.Value);
+        TrackStatusRead(postOamRow, entry);
     };
 
     machine.CpuBus.WriteObserved += entry =>
@@ -726,7 +729,7 @@ static int ReportSprDma(string[] args)
     var actual = ParseSprDmaTimingRows(output);
     var expected = IsSprDma512(args[1]) ? SprDmaReportData.Expected512 : SprDmaReportData.ExpectedNormal;
 
-    Console.WriteLine("row actual expected diff start/access pending/ready retry/delay setup-p/r first-p/r dmc-index/access sched(H/D/R)|obs dmc-kind pre-dmc oam-end status-r/w status10/0");
+    Console.WriteLine("row actual expected diff start/access pending/ready retry/delay setup-p/r first-p/r dmc-index/access sched(H/D/R)|obs dmc-kind pre-dmc oam-end status-r/w status10/0 stat-first/end");
     for (var i = 0; i < Math.Min(16, Math.Max(actual.Length, rows.Count)); i++)
     {
         var row = i < rows.Count ? rows[i] : null;
@@ -753,9 +756,10 @@ static int ReportSprDma(string[] args)
         var oamEndText = row?.OamEndAccess?.ToString(CultureInfo.InvariantCulture) ?? "-";
         var statusReadWrite = row is null ? "-" : $"{row.StatusReads}/{row.StatusWrites}";
         var statusValues = row is null ? "-" : $"{row.StatusDmcActiveReads}/{row.StatusDmcInactiveReads}";
+        var statusFirstText = FormatStatusFirsts(row);
 
         Console.WriteLine(
-            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,12} {pendingText,13} {retryText,17} {setupText,9} {firstText,9} {dmcText,16} {schedulerText,28} {kindText,-26} {preDmcText,20} {oamEndText,7} {statusReadWrite,10} {statusValues,10}");
+            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,12} {pendingText,13} {retryText,17} {setupText,9} {firstText,9} {dmcText,16} {schedulerText,28} {kindText,-26} {preDmcText,20} {oamEndText,7} {statusReadWrite,10} {statusValues,10} {statusFirstText,14}");
     }
 
     Console.WriteLine($"Instructions: {instructions}");
@@ -763,7 +767,7 @@ static int ReportSprDma(string[] args)
     return actual.Length > 0 ? 0 : 1;
 }
 
-static void TrackStatusRead(SprDmaTraceRow? row, byte value)
+static void TrackStatusRead(SprDmaTraceRow? row, CpuBusReadDebugEntry entry)
 {
     if (row is null)
     {
@@ -771,13 +775,15 @@ static void TrackStatusRead(SprDmaTraceRow? row, byte value)
     }
 
     row.StatusReads++;
-    if ((value & 0x10) != 0)
+    if ((entry.Value & 0x10) != 0)
     {
         row.StatusDmcActiveReads++;
+        row.FirstStatusDmcActiveTotalAccess ??= entry.TotalCpuAccessCycles;
     }
     else
     {
         row.StatusDmcInactiveReads++;
+        row.FirstStatusDmcInactiveTotalAccess ??= entry.TotalCpuAccessCycles;
     }
 }
 
@@ -800,6 +806,34 @@ static string FormatNullableBool(bool? value)
 {
     return value?.ToString() ?? "-";
 }
+
+static string FormatStatusFirsts(SprDmaTraceRow? row)
+{
+    if (row is null)
+    {
+        return "-";
+    }
+
+    var firstActive = FormatStatusFirst(row, row.FirstStatusDmcActiveTotalAccess);
+    var firstInactive = FormatStatusFirst(row, row.FirstStatusDmcInactiveTotalAccess);
+    return $"{firstActive}/{firstInactive}";
+}
+
+static string FormatStatusFirst(SprDmaTraceRow row, ulong? access)
+{
+    if (access is null)
+    {
+        return "-";
+    }
+
+    var fromStart = SignedDifference(access.Value, row.StartTotalAccess);
+    var fromEnd = row.OamEndTotalAccess is null ? "-" : SignedDifference(access.Value, row.OamEndTotalAccess.Value).ToString(CultureInfo.InvariantCulture);
+    return string.Create(CultureInfo.InvariantCulture, $"{fromStart}:{fromEnd}");
+}
+
+static long SignedDifference(ulong left, ulong right) => left >= right
+    ? checked((long)(left - right))
+    : -checked((long)(right - left));
 
 static string FormatPreOamDmc(SprDmaTraceRow? row)
 {
@@ -1771,6 +1805,8 @@ internal sealed class SprDmaTraceRow(int row)
 
     public int StartInstructionAccess { get; init; }
 
+    public ulong StartTotalAccess { get; init; }
+
     public bool StartPending { get; init; }
 
     public bool StartReady { get; init; }
@@ -1784,6 +1820,8 @@ internal sealed class SprDmaTraceRow(int row)
     public int? DmcOamIndex { get; set; }
 
     public int? DmcAccess { get; set; }
+
+    public ulong? DmcTotalAccess { get; set; }
 
     public bool? DmcHaltRetry { get; set; }
 
@@ -1809,6 +1847,8 @@ internal sealed class SprDmaTraceRow(int row)
 
     public int? OamEndAccess { get; set; }
 
+    public ulong? OamEndTotalAccess { get; set; }
+
     public int StatusReads { get; set; }
 
     public int StatusWrites { get; set; }
@@ -1816,6 +1856,10 @@ internal sealed class SprDmaTraceRow(int row)
     public int StatusDmcActiveReads { get; set; }
 
     public int StatusDmcInactiveReads { get; set; }
+
+    public ulong? FirstStatusDmcActiveTotalAccess { get; set; }
+
+    public ulong? FirstStatusDmcInactiveTotalAccess { get; set; }
 }
 
 internal static class SprDmaReportData

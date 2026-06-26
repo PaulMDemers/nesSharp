@@ -12,6 +12,7 @@ public sealed class CpuBus
     private Action? cpuCycleElapsed;
     private bool trackCpuAccessCycles;
     private int instructionAccessCycles;
+    private ulong totalCpuAccessCycles;
     private bool nextDmaCycleIsGet = true;
     private bool dmcDmaHaltRetry;
     private int dmcLoadDmaHaltDelayCycles;
@@ -151,7 +152,10 @@ public sealed class CpuBus
                 ppu.FineX,
                 ppu.ScrollX,
                 ppu.ScrollY,
-                ppu.WriteToggle));
+                ppu.WriteToggle,
+                totalCpuAccessCycles,
+                CpuAccessCycles,
+                instructionAccessCycles));
         }
 
         return value;
@@ -263,6 +267,7 @@ public sealed class CpuBus
         }
 
         CpuAccessCycles++;
+        totalCpuAccessCycles++;
         cpuCycleElapsed?.Invoke();
         if (advanceDmaPhase)
         {
@@ -541,6 +546,7 @@ public sealed class CpuBus
             ApuBus.IsDmcDmaReady,
             dmcDmaHaltRetry,
             dmcLoadDmaHaltDelayCycles,
+            totalCpuAccessCycles,
             oamDmcFirstPendingSetupCycle,
             oamDmcFirstReadySetupCycle,
             oamDmcFirstPendingIndex,
@@ -562,6 +568,7 @@ public readonly record struct CpuBusDmaDebugEntry(
     bool IsDmcReady,
     bool DmcHaltRetry,
     int DmcLoadHaltDelayCycles,
+    ulong TotalCpuAccessCycles,
     int? OamDmcFirstPendingSetupCycle,
     int? OamDmcFirstReadySetupCycle,
     int? OamDmcFirstPendingIndex,
@@ -596,4 +603,7 @@ public readonly record struct CpuBusReadDebugEntry(
     byte FineX,
     int ScrollX,
     int ScrollY,
-    bool WriteToggle);
+    bool WriteToggle,
+    ulong TotalCpuAccessCycles,
+    int CpuAccessCycles,
+    int InstructionAccessCycles);
