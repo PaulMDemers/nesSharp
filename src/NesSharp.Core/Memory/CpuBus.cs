@@ -18,6 +18,8 @@ public sealed class CpuBus
     private bool deferReadyDmcDmaUntilNextWrite;
     private bool deferDmcDmaUntilWriteResolution;
     private bool oamDmaStartedWithDmcReady;
+    private int? oamDmcFirstPendingSetupCycle;
+    private int? oamDmcFirstReadySetupCycle;
     private int? oamDmcFirstPendingIndex;
     private int? oamDmcFirstReadyIndex;
     private byte openBus;
@@ -411,6 +413,8 @@ public sealed class CpuBus
     {
         var baseAddress = page << 8;
         oamDmaStartedWithDmcReady = ApuBus.IsDmcDmaReady;
+        oamDmcFirstPendingSetupCycle = null;
+        oamDmcFirstReadySetupCycle = null;
         oamDmcFirstPendingIndex = null;
         oamDmcFirstReadyIndex = null;
         ObserveDma("oam-start", (ushort)baseAddress, page, null);
@@ -418,6 +422,7 @@ public sealed class CpuBus
         for (var i = 0; i < setupCycles; i++)
         {
             ClockCpuAccess(instructionAccess: false);
+            TrackOamSetupDmcState(i);
         }
 
         for (var i = 0; i < 256; i++)
@@ -487,6 +492,19 @@ public sealed class CpuBus
         }
     }
 
+    private void TrackOamSetupDmcState(int setupCycle)
+    {
+        if (oamDmcFirstPendingSetupCycle is null && ApuBus.IsDmcDmaPending)
+        {
+            oamDmcFirstPendingSetupCycle = setupCycle;
+        }
+
+        if (oamDmcFirstReadySetupCycle is null && ApuBus.IsDmcDmaReady)
+        {
+            oamDmcFirstReadySetupCycle = setupCycle;
+        }
+    }
+
     private void ObserveDma(string kind, ushort? address, int? value, int? detail)
     {
         DmaObserved?.Invoke(new CpuBusDmaDebugEntry(
@@ -501,6 +519,8 @@ public sealed class CpuBus
             ApuBus.PendingDmcDmaAddress,
             ApuBus.IsDmcDmaPending,
             ApuBus.IsDmcDmaReady,
+            oamDmcFirstPendingSetupCycle,
+            oamDmcFirstReadySetupCycle,
             oamDmcFirstPendingIndex,
             oamDmcFirstReadyIndex));
     }
@@ -518,6 +538,8 @@ public readonly record struct CpuBusDmaDebugEntry(
     ushort PendingDmcAddress,
     bool IsDmcPending,
     bool IsDmcReady,
+    int? OamDmcFirstPendingSetupCycle,
+    int? OamDmcFirstReadySetupCycle,
     int? OamDmcFirstPendingIndex,
     int? OamDmcFirstReadyIndex);
 
