@@ -19,6 +19,66 @@ public sealed class CpuDmaSchedulerTests
         Assert.Equal(256, schedule.Events.Count(e => e.Kind == CpuDmaCycleKind.OamWrite));
     }
 
+    [Theory]
+    [InlineData(false, 513)]
+    [InlineData(true, 512)]
+    public void OamDmaCanStartAfterSharedHaltCycle(bool firstCycleIsGet, int expectedCycles)
+    {
+        var schedule = CpuDmaScheduler.Simulate(new CpuDmaScheduleRequest(
+            firstCycleIsGet,
+            OamByteCount: 256,
+            DmcStartCycle: null,
+            OamHaltAlreadyDone: true));
+
+        Assert.Equal(expectedCycles, schedule.CycleCount);
+    }
+
+    [Fact]
+    public void DmcReadyAtOamBoundaryCanShareHaltCycle()
+    {
+        var schedule = CpuDmaScheduler.Simulate(new CpuDmaScheduleRequest(
+            FirstCycleIsGet: true,
+            OamByteCount: 256,
+            DmcStartCycle: 0,
+            OamHaltAlreadyDone: true));
+
+        Assert.Equal(2, schedule.Events.Single(e => e.Kind == CpuDmaCycleKind.DmcRead).Cycle);
+    }
+
+    [Theory]
+    [InlineData(CpuDmaDmcState.NeedHalt, false, 3)]
+    [InlineData(CpuDmaDmcState.NeedHalt, true, 2)]
+    [InlineData(CpuDmaDmcState.NeedDummy, false, 1)]
+    [InlineData(CpuDmaDmcState.NeedDummy, true, 2)]
+    [InlineData(CpuDmaDmcState.ReadyToRead, false, 1)]
+    [InlineData(CpuDmaDmcState.ReadyToRead, true, 0)]
+    public void DmcInitialStateControlsFirstReadCycle(
+        CpuDmaDmcState initialState,
+        bool firstCycleIsGet,
+        int expectedReadCycle)
+    {
+        var schedule = CpuDmaScheduler.Simulate(new CpuDmaScheduleRequest(
+            firstCycleIsGet,
+            OamByteCount: 0,
+            DmcStartCycle: null,
+            DmcInitialState: initialState));
+
+        Assert.Equal(expectedReadCycle, schedule.Events.Single(e => e.Kind == CpuDmaCycleKind.DmcRead).Cycle);
+    }
+
+    [Fact]
+    public void DmcStartStateAppliesWhenRequestAppearsDuringOamDma()
+    {
+        var schedule = CpuDmaScheduler.Simulate(new CpuDmaScheduleRequest(
+            FirstCycleIsGet: false,
+            OamByteCount: 4,
+            DmcStartCycle: 4,
+            DmcStartState: CpuDmaDmcState.NeedDummy));
+
+        Assert.Equal(5, schedule.Events.Single(e => e.Kind == CpuDmaCycleKind.DmcRead).Cycle);
+        Assert.Equal(CpuDmaCycleKind.OamWrite, schedule.Events.Single(e => e.Cycle == 4).Kind);
+    }
+
     [Fact]
     public void DmcDmaInMiddleOfOamDmaStealsReadAndRealignsOam()
     {

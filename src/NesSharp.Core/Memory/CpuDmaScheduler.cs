@@ -7,22 +7,23 @@ public static class CpuDmaScheduler
         var events = new List<CpuDmaCycleEvent>();
         var nextCycleIsGet = request.FirstCycleIsGet;
         var oamActive = request.OamByteCount > 0;
-        var oamNeedsHalt = oamActive;
+        var oamNeedsHalt = oamActive && !request.OamHaltAlreadyDone;
         var oamOperationCount = 0;
         var oamReadAddress = 0;
-        var dmcActive = request.DmcStartCycle is 0;
-        var dmcNeedsHalt = dmcActive;
-        var dmcNeedsDummy = dmcActive;
+        var dmcState = request.DmcInitialState;
+        if (request.DmcStartCycle is 0 && dmcState == CpuDmaDmcState.Inactive)
+        {
+            dmcState = request.DmcStartState;
+        }
+
         var dmcCompleted = false;
         var cycle = 0;
 
-        while (oamActive || dmcActive)
+        while (oamActive || dmcState != CpuDmaDmcState.Inactive)
         {
-            if (request.DmcStartCycle == cycle)
+            if (request.DmcStartCycle == cycle && dmcState == CpuDmaDmcState.Inactive)
             {
-                dmcActive = true;
-                dmcNeedsHalt = true;
-                dmcNeedsDummy = true;
+                dmcState = request.DmcStartState;
             }
 
             var cycleIsGet = nextCycleIsGet;
@@ -31,10 +32,10 @@ public static class CpuDmaScheduler
 
             if (cycleIsGet)
             {
-                if (dmcActive && !dmcNeedsHalt && !dmcNeedsDummy)
+                if (dmcState == CpuDmaDmcState.ReadyToRead)
                 {
                     kind = CpuDmaCycleKind.DmcRead;
-                    dmcActive = false;
+                    dmcState = CpuDmaDmcState.Inactive;
                     dmcCompleted = true;
                 }
                 else if (oamNeedsHalt)
@@ -74,16 +75,13 @@ public static class CpuDmaScheduler
                 kind = CpuDmaCycleKind.DummyRead;
             }
 
-            if (dmcActive)
+            if (dmcState == CpuDmaDmcState.NeedHalt)
             {
-                if (dmcNeedsHalt)
-                {
-                    dmcNeedsHalt = false;
-                }
-                else if (dmcNeedsDummy)
-                {
-                    dmcNeedsDummy = false;
-                }
+                dmcState = CpuDmaDmcState.NeedDummy;
+            }
+            else if (dmcState == CpuDmaDmcState.NeedDummy)
+            {
+                dmcState = CpuDmaDmcState.ReadyToRead;
             }
 
             events.Add(new CpuDmaCycleEvent(cycle, cycleIsGet, kind, oamIndex));
@@ -98,7 +96,10 @@ public static class CpuDmaScheduler
 public readonly record struct CpuDmaScheduleRequest(
     bool FirstCycleIsGet,
     int OamByteCount,
-    int? DmcStartCycle);
+    int? DmcStartCycle,
+    bool OamHaltAlreadyDone = false,
+    CpuDmaDmcState DmcInitialState = CpuDmaDmcState.Inactive,
+    CpuDmaDmcState DmcStartState = CpuDmaDmcState.NeedHalt);
 
 public sealed class CpuDmaSchedule(IReadOnlyList<CpuDmaCycleEvent> events, bool dmcCompleted)
 {
@@ -121,4 +122,12 @@ public enum CpuDmaCycleKind
     OamRead,
     OamWrite,
     DmcRead
+}
+
+public enum CpuDmaDmcState
+{
+    Inactive,
+    NeedHalt,
+    NeedDummy,
+    ReadyToRead
 }
