@@ -428,17 +428,37 @@ public sealed class CpuBus
         for (var i = 0; i < 256; i++)
         {
             TrackOamDmcState(i);
-            RunDmcDmaDuringOamDma(i);
+            var runDmcAfterOamByte = ShouldRunDmcDmaAfterOamByte(i);
+            if (!runDmcAfterOamByte)
+            {
+                RunDmcDmaDuringOamDma(i);
+            }
 
             var value = ReadRaw((ushort)(baseAddress + i));
             ClockCpuAccess(instructionAccess: false);
 
             ppuBus.WriteOamDmaByte(value);
             ClockCpuAccess(instructionAccess: false);
+
+            if (runDmcAfterOamByte)
+            {
+                RunDmcDmaDuringOamDma(i);
+            }
         }
 
         RunPendingDmcDma();
         ObserveDma("oam-end", null, null, null);
+    }
+
+    private bool ShouldRunDmcDmaAfterOamByte(int oamIndex)
+    {
+        if (!ApuBus.IsDmcDmaReady)
+        {
+            return false;
+        }
+
+        var plan = OamDmcDmaTiming.Plan(oamIndex, ApuBus.PendingDmcDmaKind, oamDmaStartedWithDmcReady);
+        return !plan.StealsFirstOamReadWithoutRetry;
     }
 
     private void RunDmcDmaDuringOamDma(int oamIndex)
