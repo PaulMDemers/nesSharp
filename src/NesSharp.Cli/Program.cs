@@ -640,6 +640,8 @@ static int ReportSprDma(string[] args)
                     StartNextIsGet = entry.NextDmaCycleIsGet,
                     StartPending = entry.IsDmcPending,
                     StartReady = entry.IsDmcReady,
+                    StartDmcHaltRetry = entry.DmcHaltRetry,
+                    StartDmcLoadDelay = entry.DmcLoadHaltDelayCycles,
                     StartAccess = entry.CpuAccessCycles,
                     StartInstructionAccess = entry.InstructionAccessCycles
                 };
@@ -665,6 +667,8 @@ static int ReportSprDma(string[] args)
                     currentRow.FirstReadySetupCycle = entry.OamDmcFirstReadySetupCycle;
                     currentRow.FirstPendingIndex = entry.OamDmcFirstPendingIndex;
                     currentRow.FirstReadyIndex = entry.OamDmcFirstReadyIndex;
+                    currentRow.DmcHaltRetry = entry.DmcHaltRetry;
+                    currentRow.DmcLoadDelay = entry.DmcLoadHaltDelayCycles;
                 }
 
                 break;
@@ -722,7 +726,7 @@ static int ReportSprDma(string[] args)
     var actual = ParseSprDmaTimingRows(output);
     var expected = IsSprDma512(args[1]) ? SprDmaReportData.Expected512 : SprDmaReportData.ExpectedNormal;
 
-    Console.WriteLine("row actual expected diff start/access pending/ready setup-p/r first-p/r dmc-index/access sched(H/D/R)|obs dmc-kind pre-dmc oam-end status-r/w status10/0");
+    Console.WriteLine("row actual expected diff start/access pending/ready retry/delay setup-p/r first-p/r dmc-index/access sched(H/D/R)|obs dmc-kind pre-dmc oam-end status-r/w status10/0");
     for (var i = 0; i < Math.Min(16, Math.Max(actual.Length, rows.Count)); i++)
     {
         var row = i < rows.Count ? rows[i] : null;
@@ -742,6 +746,7 @@ static int ReportSprDma(string[] args)
             : $"{FormatNullableInt(row?.FirstPendingSetupCycle)}/{FormatNullableInt(row?.FirstReadySetupCycle)}";
         var startText = row is null ? "-" : $"{row.StartNext}/{row.StartAccess}/{row.StartInstructionAccess}";
         var pendingText = row is null ? "-" : $"{row.StartPending}/{row.StartReady}";
+        var retryText = row is null ? "-" : $"{row.StartDmcHaltRetry}/{row.StartDmcLoadDelay}:{FormatNullableBool(row.DmcHaltRetry)}/{FormatNullableInt(row.DmcLoadDelay)}";
         var kindText = row?.DmcKind ?? "-";
         var schedulerText = FormatSchedulerShadow(row);
         var preDmcText = FormatPreOamDmc(row);
@@ -750,7 +755,7 @@ static int ReportSprDma(string[] args)
         var statusValues = row is null ? "-" : $"{row.StatusDmcActiveReads}/{row.StatusDmcInactiveReads}";
 
         Console.WriteLine(
-            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,12} {pendingText,13} {setupText,9} {firstText,9} {dmcText,16} {schedulerText,28} {kindText,-26} {preDmcText,20} {oamEndText,7} {statusReadWrite,10} {statusValues,10}");
+            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,12} {pendingText,13} {retryText,17} {setupText,9} {firstText,9} {dmcText,16} {schedulerText,28} {kindText,-26} {preDmcText,20} {oamEndText,7} {statusReadWrite,10} {statusValues,10}");
     }
 
     Console.WriteLine($"Instructions: {instructions}");
@@ -789,6 +794,11 @@ static void TrackStatusWrite(SprDmaTraceRow? row)
 static string FormatNullableInt(int? value)
 {
     return value?.ToString(CultureInfo.InvariantCulture) ?? "-";
+}
+
+static string FormatNullableBool(bool? value)
+{
+    return value?.ToString() ?? "-";
 }
 
 static string FormatPreOamDmc(SprDmaTraceRow? row)
@@ -887,7 +897,7 @@ static string FormatDmaTrace(CpuBusDmaDebugEntry entry, ushort pc, ulong cpuCycl
         : $"{FormatNullableInt(entry.OamDmcFirstPendingIndex)}/{FormatNullableInt(entry.OamDmcFirstReadyIndex)}";
     return string.Create(
         CultureInfo.InvariantCulture,
-        $"PC={pc:X4} CYC={cpuCycles} DMA={entry.Kind} addr={address} val={value} detail={detail} cpuAccess={entry.CpuAccessCycles} instrAccess={entry.InstructionAccessCycles} next={(entry.NextDmaCycleIsGet ? "get" : "put")} pending={entry.IsDmcPending}/{entry.IsDmcReady} setup={setup} firstOam={firstOam} dmc={entry.PendingDmcKind}@${entry.PendingDmcAddress:X4}");
+        $"PC={pc:X4} CYC={cpuCycles} DMA={entry.Kind} addr={address} val={value} detail={detail} cpuAccess={entry.CpuAccessCycles} instrAccess={entry.InstructionAccessCycles} next={(entry.NextDmaCycleIsGet ? "get" : "put")} pending={entry.IsDmcPending}/{entry.IsDmcReady} retry={entry.DmcHaltRetry} loadDelay={entry.DmcLoadHaltDelayCycles} setup={setup} firstOam={firstOam} dmc={entry.PendingDmcKind}@${entry.PendingDmcAddress:X4}");
 }
 
 static bool ShouldTraceRead(ushort address, bool includeController)
@@ -1765,11 +1775,19 @@ internal sealed class SprDmaTraceRow(int row)
 
     public bool StartReady { get; init; }
 
+    public bool StartDmcHaltRetry { get; init; }
+
+    public int StartDmcLoadDelay { get; init; }
+
     public string? DmcKind { get; set; }
 
     public int? DmcOamIndex { get; set; }
 
     public int? DmcAccess { get; set; }
+
+    public bool? DmcHaltRetry { get; set; }
+
+    public int? DmcLoadDelay { get; set; }
 
     public int? FirstPendingSetupCycle { get; set; }
 
