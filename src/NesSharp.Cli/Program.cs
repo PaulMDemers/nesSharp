@@ -732,6 +732,8 @@ static int ReportSprDma(string[] args)
     var expected = IsSprDma512(args[1]) ? SprDmaReportData.Expected512 : SprDmaReportData.ExpectedNormal;
 
     Console.WriteLine("row actual expected diff start/access pending/ready retry/delay setup-p/r first-p/r dmc-index/access sched-ready(H/D/R)|obs sched-pend(H/D/R) dmc-kind pre-dmc oam-end status-r/w status10/0 stat-first/end stat-pc write");
+    var absoluteDiffTotal = 0;
+    var maxAbsoluteDiff = 0;
     for (var i = 0; i < Math.Min(16, Math.Max(actual.Length, rows.Count)); i++)
     {
         var row = i < rows.Count ? rows[i] : null;
@@ -740,6 +742,13 @@ static int ReportSprDma(string[] args)
         var diffText = i < actual.Length && i < expected.Length
             ? (actual[i] - expected[i]).ToString(CultureInfo.InvariantCulture)
             : "-";
+        if (i < actual.Length && i < expected.Length)
+        {
+            var absoluteDiff = Math.Abs(actual[i] - expected[i]);
+            absoluteDiffTotal += absoluteDiff;
+            maxAbsoluteDiff = Math.Max(maxAbsoluteDiff, absoluteDiff);
+        }
+
         var dmcText = row?.DmcOamIndex is null
             ? "-"
             : $"{row.DmcOamIndex}/{row.DmcAccess}";
@@ -767,6 +776,7 @@ static int ReportSprDma(string[] args)
             $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,12} {pendingText,13} {retryText,17} {setupText,9} {firstText,9} {dmcText,16} {schedulerText,34} {pendingSchedulerText,26} {kindText,-26} {preDmcText,20} {oamEndText,7} {statusReadWrite,10} {statusValues,10} {statusFirstText,14} {statusPcText,9} {statusWriteText,12}");
     }
 
+    Console.WriteLine($"Diff score: abs={absoluteDiffTotal} max={maxAbsoluteDiff}");
     Console.WriteLine($"Instructions: {instructions}");
     Console.WriteLine($"Status: {(IsBlarggComplete(machine) ? machine.CpuBus.ReadRaw(SprDmaReportData.BlarggStatusAddress).ToString("X2", CultureInfo.InvariantCulture) : "timeout")}");
     return actual.Length > 0 ? 0 : 1;
