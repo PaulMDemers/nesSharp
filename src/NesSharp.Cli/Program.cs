@@ -623,6 +623,7 @@ static int ReportSprDma(string[] args)
     SprDmaTraceRow? postOamRow = null;
     CpuBusDmaDebugEntry? lastDmcEntry = null;
     ulong lastDmcCycle = 0;
+    var currentInstructionPc = machine.Cpu.ProgramCounter;
 
     machine.CpuBus.DmaObserved += entry =>
     {
@@ -701,7 +702,7 @@ static int ReportSprDma(string[] args)
             return;
         }
 
-        TrackStatusRead(postOamRow, entry);
+        TrackStatusRead(postOamRow, entry, currentInstructionPc);
     };
 
     machine.CpuBus.WriteObserved += entry =>
@@ -711,7 +712,7 @@ static int ReportSprDma(string[] args)
             return;
         }
 
-        TrackStatusWrite(postOamRow);
+        TrackStatusWrite(postOamRow, entry, currentInstructionPc);
     };
 
     long instructions;
@@ -722,6 +723,7 @@ static int ReportSprDma(string[] args)
             break;
         }
 
+        currentInstructionPc = machine.Cpu.ProgramCounter;
         machine.StepInstruction();
     }
 
@@ -729,7 +731,7 @@ static int ReportSprDma(string[] args)
     var actual = ParseSprDmaTimingRows(output);
     var expected = IsSprDma512(args[1]) ? SprDmaReportData.Expected512 : SprDmaReportData.ExpectedNormal;
 
-    Console.WriteLine("row actual expected diff start/access pending/ready retry/delay setup-p/r first-p/r dmc-index/access sched(H/D/R)|obs dmc-kind pre-dmc oam-end status-r/w status10/0 stat-first/end");
+    Console.WriteLine("row actual expected diff start/access pending/ready retry/delay setup-p/r first-p/r dmc-index/access sched-ready(H/D/R)|obs sched-pend(H/D/R) dmc-kind pre-dmc oam-end status-r/w status10/0 stat-first/end stat-pc write");
     for (var i = 0; i < Math.Min(16, Math.Max(actual.Length, rows.Count)); i++)
     {
         var row = i < rows.Count ? rows[i] : null;
@@ -751,15 +753,18 @@ static int ReportSprDma(string[] args)
         var pendingText = row is null ? "-" : $"{row.StartPending}/{row.StartReady}";
         var retryText = row is null ? "-" : $"{row.StartDmcHaltRetry}/{row.StartDmcLoadDelay}:{FormatNullableBool(row.DmcHaltRetry)}/{FormatNullableInt(row.DmcLoadDelay)}";
         var kindText = row?.DmcKind ?? "-";
-        var schedulerText = FormatSchedulerShadow(row);
+        var schedulerText = FormatSchedulerShadow(row, usePendingStart: false);
+        var pendingSchedulerText = FormatSchedulerShadow(row, usePendingStart: true);
         var preDmcText = FormatPreOamDmc(row);
         var oamEndText = row?.OamEndAccess?.ToString(CultureInfo.InvariantCulture) ?? "-";
         var statusReadWrite = row is null ? "-" : $"{row.StatusReads}/{row.StatusWrites}";
         var statusValues = row is null ? "-" : $"{row.StatusDmcActiveReads}/{row.StatusDmcInactiveReads}";
         var statusFirstText = FormatStatusFirsts(row);
+        var statusPcText = FormatStatusPcs(row);
+        var statusWriteText = FormatStatusWrite(row);
 
         Console.WriteLine(
-            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,12} {pendingText,13} {retryText,17} {setupText,9} {firstText,9} {dmcText,16} {schedulerText,28} {kindText,-26} {preDmcText,20} {oamEndText,7} {statusReadWrite,10} {statusValues,10} {statusFirstText,14}");
+            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,12} {pendingText,13} {retryText,17} {setupText,9} {firstText,9} {dmcText,16} {schedulerText,34} {pendingSchedulerText,26} {kindText,-26} {preDmcText,20} {oamEndText,7} {statusReadWrite,10} {statusValues,10} {statusFirstText,14} {statusPcText,9} {statusWriteText,12}");
     }
 
     Console.WriteLine($"Instructions: {instructions}");
@@ -767,7 +772,7 @@ static int ReportSprDma(string[] args)
     return actual.Length > 0 ? 0 : 1;
 }
 
-static void TrackStatusRead(SprDmaTraceRow? row, CpuBusReadDebugEntry entry)
+static void TrackStatusRead(SprDmaTraceRow? row, CpuBusReadDebugEntry entry, ushort pc)
 {
     if (row is null)
     {
@@ -778,16 +783,24 @@ static void TrackStatusRead(SprDmaTraceRow? row, CpuBusReadDebugEntry entry)
     if ((entry.Value & 0x10) != 0)
     {
         row.StatusDmcActiveReads++;
-        row.FirstStatusDmcActiveTotalAccess ??= entry.TotalCpuAccessCycles;
+        if (row.FirstStatusDmcActiveTotalAccess is null)
+        {
+            row.FirstStatusDmcActiveTotalAccess = entry.TotalCpuAccessCycles;
+            row.FirstStatusDmcActivePc = pc;
+        }
     }
     else
     {
         row.StatusDmcInactiveReads++;
-        row.FirstStatusDmcInactiveTotalAccess ??= entry.TotalCpuAccessCycles;
+        if (row.FirstStatusDmcInactiveTotalAccess is null)
+        {
+            row.FirstStatusDmcInactiveTotalAccess = entry.TotalCpuAccessCycles;
+            row.FirstStatusDmcInactivePc = pc;
+        }
     }
 }
 
-static void TrackStatusWrite(SprDmaTraceRow? row)
+static void TrackStatusWrite(SprDmaTraceRow? row, CpuBusWriteDebugEntry entry, ushort pc)
 {
     if (row is null)
     {
@@ -795,6 +808,8 @@ static void TrackStatusWrite(SprDmaTraceRow? row)
     }
 
     row.StatusWrites++;
+    row.LastStatusWriteValue = entry.Value;
+    row.LastStatusWritePc = pc;
 }
 
 static string FormatNullableInt(int? value)
@@ -818,6 +833,28 @@ static string FormatStatusFirsts(SprDmaTraceRow? row)
     var firstInactive = FormatStatusFirst(row, row.FirstStatusDmcInactiveTotalAccess);
     return $"{firstActive}/{firstInactive}";
 }
+
+static string FormatStatusPcs(SprDmaTraceRow? row)
+{
+    if (row is null)
+    {
+        return "-";
+    }
+
+    return $"{FormatNullableHex(row.FirstStatusDmcActivePc)}/{FormatNullableHex(row.FirstStatusDmcInactivePc)}";
+}
+
+static string FormatStatusWrite(SprDmaTraceRow? row)
+{
+    if (row?.LastStatusWriteValue is null || row.LastStatusWritePc is null)
+    {
+        return "-";
+    }
+
+    return $"{row.LastStatusWritePc.Value:X4}:${row.LastStatusWriteValue.Value:X2}";
+}
+
+static string FormatNullableHex(ushort? value) => value?.ToString("X4", CultureInfo.InvariantCulture) ?? "-";
 
 static string FormatStatusFirst(SprDmaTraceRow row, ulong? access)
 {
@@ -847,14 +884,16 @@ static string FormatPreOamDmc(SprDmaTraceRow? row)
         $"{row.PreOamDmcKind}:{FormatNullableInt(row.PreOamDmcDetail)}/{FormatNullableInt(row.PreOamDmcAccess)}/{FormatNullableInt(row.PreOamDmcInstructionAccess)}+{row.PreOamDmcCycleDelta}");
 }
 
-static string FormatSchedulerShadow(SprDmaTraceRow? row)
+static string FormatSchedulerShadow(SprDmaTraceRow? row, bool usePendingStart)
 {
     if (row is null)
     {
         return "-";
     }
 
-    var dmcStartCycle = EstimateSchedulerDmcStartCycle(row);
+    var dmcStartCycle = usePendingStart
+        ? EstimateSchedulerDmcPendingStartCycle(row)
+        : EstimateSchedulerDmcReadyStartCycle(row);
     if (dmcStartCycle is null)
     {
         return "-";
@@ -889,7 +928,7 @@ static string FormatSchedulerShadowState(SprDmaTraceRow row, int dmcStartCycle, 
         $"{dmcRead.Cycle}:{schedule.CycleCount}");
 }
 
-static int? EstimateSchedulerDmcStartCycle(SprDmaTraceRow row)
+static int? EstimateSchedulerDmcReadyStartCycle(SprDmaTraceRow row)
 {
     if (row.DmcKind is null)
     {
@@ -904,6 +943,26 @@ static int? EstimateSchedulerDmcStartCycle(SprDmaTraceRow row)
     if (row.FirstReadyIndex is not null)
     {
         return OamSetupCycleCount(row.StartNextIsGet) + row.FirstReadyIndex.Value * 2;
+    }
+
+    return null;
+}
+
+static int? EstimateSchedulerDmcPendingStartCycle(SprDmaTraceRow row)
+{
+    if (row.DmcKind is null)
+    {
+        return null;
+    }
+
+    if (row.FirstPendingSetupCycle is not null)
+    {
+        return row.FirstPendingSetupCycle.Value;
+    }
+
+    if (row.FirstPendingIndex is not null)
+    {
+        return OamSetupCycleCount(row.StartNextIsGet) + row.FirstPendingIndex.Value * 2;
     }
 
     return null;
@@ -1860,6 +1919,14 @@ internal sealed class SprDmaTraceRow(int row)
     public ulong? FirstStatusDmcActiveTotalAccess { get; set; }
 
     public ulong? FirstStatusDmcInactiveTotalAccess { get; set; }
+
+    public ushort? FirstStatusDmcActivePc { get; set; }
+
+    public ushort? FirstStatusDmcInactivePc { get; set; }
+
+    public ushort? LastStatusWritePc { get; set; }
+
+    public byte? LastStatusWriteValue { get; set; }
 }
 
 internal static class SprDmaReportData
