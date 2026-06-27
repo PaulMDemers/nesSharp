@@ -389,6 +389,32 @@ public sealed class CpuBusTests
     }
 
     [Fact]
+    public void OamDmaStartsOnAdvancedPhaseAfterDmcWriteOverlap()
+    {
+        var bus = new CpuBus(CreateCartridgeWithResetVector());
+        bus.WriteRaw(0x4013, 0x00);
+        bus.WriteRaw(0x4015, 0x10);
+        ClockDmcDmaReady(bus.ApuBus);
+
+        var entries = new List<CpuBusDmaDebugEntry>();
+        bus.DmaObserved += entries.Add;
+
+        bus.BeginCpuInstruction();
+        bus.BeginPotentialDmcDmaWriteOverlap();
+        bus.Read(0x8000);
+        bus.ResolvePotentialDmcDmaWriteOverlap(nextWriteCanOverlapDmcDma: true);
+        bus.Write(0x4014, 0x02);
+        bus.EndCpuInstruction();
+
+        var dmc = entries.Single(e => e.Kind == "dmc-write-overlap");
+        var start = entries.Single(e => e.Kind == "oam-start");
+
+        Assert.False(start.NextDmaCycleIsGet);
+        Assert.Equal(2, dmc.Detail);
+        Assert.Equal(4, start.CpuAccessCycles);
+    }
+
+    [Fact]
     public void OamDmaReportsReloadDmcServiceOffsetWhenDmcIsReadyOnPutBoundary()
     {
         var bus = new CpuBus(CreateCartridgeWithResetVector());

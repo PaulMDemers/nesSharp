@@ -345,6 +345,7 @@ public sealed class CpuBus
         ClockCpuAccess(instructionAccess: false);
         var value = ReadRaw(address);
         ApuBus.CompleteDmcDma(value);
+        AdvanceDmaPhase();
         ObserveDma("dmc-write-overlap", address, value, 2);
         dmcDmaHaltRetry = false;
         dmcLoadDmaHaltDelayCycles = 0;
