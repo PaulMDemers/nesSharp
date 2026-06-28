@@ -799,7 +799,7 @@ static int ReportSprDma(string[] args)
     var actual = ParseSprDmaTimingRows(output);
     var expected = IsSprDma512(args[1]) ? SprDmaReportData.Expected512 : SprDmaReportData.ExpectedNormal;
 
-    Console.WriteLine("row actual expected diff start/access pending/ready retry/delay setup-p/r first-p/r dmc-index/access sched-ready(H/D/R)|obs sched-pend(H/D/R) sched-best dmc-kind pre-dmc post-dmc oam-end end-p/r/k/t/b/bytes/d status-r/w status10/0 stat-first/end stat-pc write");
+    Console.WriteLine("row actual expected diff start/access pending/ready retry/delay setup-p/r first-p/r dmc-index/access sched-ready(H/D/R)|obs sched-pend(H/D/R) sched-best dmc-kind pre-dmc post-dmc oam-end end-p/r/k/t/b/bytes/d status-r/w status10/0 stat-first/end stat-pc stat-dmc write");
     var absoluteDiffTotal = 0;
     var maxAbsoluteDiff = 0;
     for (var i = 0; i < Math.Min(16, Math.Max(actual.Length, rows.Count)); i++)
@@ -846,10 +846,11 @@ static int ReportSprDma(string[] args)
         var statusValues = row is null ? "-" : $"{row.StatusDmcActiveReads}/{row.StatusDmcInactiveReads}";
         var statusFirstText = FormatStatusFirsts(row);
         var statusPcText = FormatStatusPcs(row);
+        var statusDmcText = FormatStatusDmcState(row);
         var statusWriteText = FormatStatusWrite(row);
 
         Console.WriteLine(
-            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,12} {pendingText,13} {retryText,17} {setupText,9} {firstText,9} {dmcText,16} {schedulerText,34} {pendingSchedulerText,26} {bestSchedulerText,14} {kindText,-26} {preDmcText,20} {postDmcText,20} {oamEndText,7} {oamEndDmcText,9} {statusReadWrite,10} {statusValues,10} {statusFirstText,14} {statusPcText,9} {statusWriteText,12}");
+            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,12} {pendingText,13} {retryText,17} {setupText,9} {firstText,9} {dmcText,16} {schedulerText,34} {pendingSchedulerText,26} {bestSchedulerText,14} {kindText,-26} {preDmcText,20} {postDmcText,20} {oamEndText,7} {oamEndDmcText,9} {statusReadWrite,10} {statusValues,10} {statusFirstText,14} {statusPcText,9} {statusDmcText,23} {statusWriteText,12}");
     }
 
     Console.WriteLine($"Diff score: abs={absoluteDiffTotal} max={maxAbsoluteDiff}");
@@ -925,6 +926,7 @@ static void TrackStatusRead(SprDmaTraceRow? row, CpuBusReadDebugEntry entry, ush
         {
             row.FirstStatusDmcActiveTotalAccess = entry.TotalCpuAccessCycles;
             row.FirstStatusDmcActivePc = pc;
+            row.FirstStatusDmcActiveState = FormatDmcReadState(entry);
         }
     }
     else
@@ -934,6 +936,7 @@ static void TrackStatusRead(SprDmaTraceRow? row, CpuBusReadDebugEntry entry, ush
         {
             row.FirstStatusDmcInactiveTotalAccess = entry.TotalCpuAccessCycles;
             row.FirstStatusDmcInactivePc = pc;
+            row.FirstStatusDmcInactiveState = FormatDmcReadState(entry);
         }
     }
 }
@@ -980,6 +983,23 @@ static string FormatStatusPcs(SprDmaTraceRow? row)
     }
 
     return $"{FormatNullableHex(row.FirstStatusDmcActivePc)}/{FormatNullableHex(row.FirstStatusDmcInactivePc)}";
+}
+
+static string FormatStatusDmcState(SprDmaTraceRow? row)
+{
+    if (row is null)
+    {
+        return "-";
+    }
+
+    return $"{row.FirstStatusDmcActiveState ?? "-"}/{row.FirstStatusDmcInactiveState ?? "-"}";
+}
+
+static string FormatDmcReadState(CpuBusReadDebugEntry entry)
+{
+    return string.Create(
+        CultureInfo.InvariantCulture,
+        $"t{entry.DmcTimerCounter}/b{entry.DmcBitsRemaining}/r{entry.DmcBytesRemaining}/d{entry.DmcSampleFetchDelayCycles}/buf{(entry.DmcSampleBufferEmpty ? 0 : 1)}/dma{(entry.IsDmcDmaPending ? 1 : 0)}{(entry.IsDmcDmaReady ? 1 : 0)}");
 }
 
 static string FormatStatusWrite(SprDmaTraceRow? row)
@@ -2438,6 +2458,10 @@ internal sealed class SprDmaTraceRow(int row)
     public ushort? FirstStatusDmcActivePc { get; set; }
 
     public ushort? FirstStatusDmcInactivePc { get; set; }
+
+    public string? FirstStatusDmcActiveState { get; set; }
+
+    public string? FirstStatusDmcInactiveState { get; set; }
 
     public ushort? LastStatusWritePc { get; set; }
 
