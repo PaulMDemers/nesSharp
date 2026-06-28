@@ -105,7 +105,7 @@ static void PrintUsage()
     Console.WriteLine("                   Print PPU register and mapper writes with PPU timing.");
     Console.WriteLine("  trace-dma <rom.nes> [--max-instructions 50000000] [--max-events 200] [--include-status]");
     Console.WriteLine("                   Print OAM/DMC DMA events with current CPU instruction PC.");
-    Console.WriteLine("  sprdma-report <rom.nes> [--max-instructions 20000000]");
+    Console.WriteLine("  sprdma-report <rom.nes> [--max-instructions 20000000] [--rows 00-0F,0A]");
     Console.WriteLine("                   Print compact row timing for sprdma_and_dmc_dma test ROMs.");
 }
 
@@ -656,11 +656,12 @@ static int ReportSprDma(string[] args)
 {
     if (args.Length < 2)
     {
-        Console.Error.WriteLine("Usage: NesSharp.Cli sprdma-report <rom.nes> [--max-instructions 20000000]");
+        Console.Error.WriteLine("Usage: NesSharp.Cli sprdma-report <rom.nes> [--max-instructions 20000000] [--rows 00-0F,0A]");
         return 1;
     }
 
     var maxInstructions = GetLongOption(args, "--max-instructions", 20_000_000);
+    var rowFilter = ParseSprDmaRowFilter(GetOption(args, "--rows"));
     var machine = NesMachine.LoadFile(args[1]);
     machine.Reset();
     var rows = new List<SprDmaTraceRow>();
@@ -803,6 +804,11 @@ static int ReportSprDma(string[] args)
     var maxAbsoluteDiff = 0;
     for (var i = 0; i < Math.Min(16, Math.Max(actual.Length, rows.Count)); i++)
     {
+        if (rowFilter is not null && !rowFilter.Contains(i))
+        {
+            continue;
+        }
+
         var row = i < rows.Count ? rows[i] : null;
         var actualText = i < actual.Length ? actual[i].ToString(CultureInfo.InvariantCulture) : "-";
         var expectedText = i < expected.Length ? expected[i].ToString(CultureInfo.InvariantCulture) : "-";
@@ -849,6 +855,58 @@ static int ReportSprDma(string[] args)
     Console.WriteLine($"Instructions: {instructions}");
     Console.WriteLine($"Status: {(IsBlarggComplete(machine) ? machine.CpuBus.ReadRaw(SprDmaReportData.BlarggStatusAddress).ToString("X2", CultureInfo.InvariantCulture) : "timeout")}");
     return actual.Length > 0 ? 0 : 1;
+}
+
+static HashSet<int>? ParseSprDmaRowFilter(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return null;
+    }
+
+    var rows = new HashSet<int>();
+    foreach (var part in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+    {
+        var rangeParts = part.Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (rangeParts.Length is 1)
+        {
+            rows.Add(ParseSprDmaRowNumber(rangeParts[0]));
+            continue;
+        }
+
+        if (rangeParts.Length is not 2)
+        {
+            throw new ArgumentException($"Invalid row filter segment '{part}'. Use values like 00, 0A, or 06-0F.");
+        }
+
+        var start = ParseSprDmaRowNumber(rangeParts[0]);
+        var end = ParseSprDmaRowNumber(rangeParts[1]);
+        if (end < start)
+        {
+            (start, end) = (end, start);
+        }
+
+        for (var row = start; row <= end; row++)
+        {
+            rows.Add(row);
+        }
+    }
+
+    return rows;
+}
+
+static int ParseSprDmaRowNumber(string value)
+{
+    var style = value.Any(static c => char.IsAsciiHexDigit(c) && char.IsLetter(c))
+        ? NumberStyles.HexNumber
+        : NumberStyles.Integer;
+    var row = int.Parse(value, style, CultureInfo.InvariantCulture);
+    if (row is < 0 or > 15)
+    {
+        throw new ArgumentOutOfRangeException(nameof(value), "sprdma row must be between 00 and 0F.");
+    }
+
+    return row;
 }
 
 static void TrackStatusRead(SprDmaTraceRow? row, CpuBusReadDebugEntry entry, ushort pc)
