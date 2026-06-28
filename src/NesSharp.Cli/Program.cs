@@ -231,6 +231,7 @@ static int CompareFrame(string[] args)
     Console.WriteLine($"Actual SHA256: {Convert.ToHexString(SHA256.HashData(actualRgb)).ToLowerInvariant()}");
     Console.WriteLine($"Reference SHA256: {Convert.ToHexString(SHA256.HashData(expectedRgb)).ToLowerInvariant()}");
     Console.WriteLine($"Differing pixels: {diff.DifferingPixels} / {FrameDiff.PixelCount}");
+    Console.WriteLine($"Difference bounds: {diff.BoundsText}");
     Console.WriteLine($"Max channel delta: {diff.MaxChannelDelta}");
     Console.WriteLine($"Total absolute channel delta: {diff.TotalAbsoluteChannelDelta}");
 
@@ -269,7 +270,7 @@ static int ScanFrameMatch(string[] args)
     long instructions = 0;
     ulong lastScannedFrame = 0;
     FrameScanResult? best = null;
-    Console.WriteLine("frame,instructions,differing_pixels,max_channel_delta,total_absolute_channel_delta");
+    Console.WriteLine("frame,instructions,differing_pixels,min_x,min_y,max_x,max_y,max_channel_delta,total_absolute_channel_delta");
 
     while (machine.PpuBus.Frame < (ulong)endFrame && instructions < maxInstructions)
     {
@@ -287,7 +288,7 @@ static int ScanFrameMatch(string[] args)
         lastScannedFrame = machine.PpuBus.Frame;
         var actualRgb = FrameImage.ToRgb(machine.PpuBus.Framebuffer);
         var diff = FrameDiff.Calculate(actualRgb, expectedRgb);
-        Console.WriteLine($"{machine.PpuBus.Frame},{instructions},{diff.DifferingPixels},{diff.MaxChannelDelta},{diff.TotalAbsoluteChannelDelta}");
+        Console.WriteLine($"{machine.PpuBus.Frame},{instructions},{diff.DifferingPixels},{FormatNullableInt(diff.MinX)},{FormatNullableInt(diff.MinY)},{FormatNullableInt(diff.MaxX)},{FormatNullableInt(diff.MaxY)},{diff.MaxChannelDelta},{diff.TotalAbsoluteChannelDelta}");
 
         var candidate = new FrameScanResult(machine.PpuBus.Frame, instructions, diff);
         if (best is null || candidate.Diff.TotalAbsoluteChannelDelta < best.Value.Diff.TotalAbsoluteChannelDelta)
@@ -307,6 +308,7 @@ static int ScanFrameMatch(string[] args)
         Console.WriteLine($"Best frame: {best.Value.Frame}");
         Console.WriteLine($"Best instructions: {best.Value.Instructions}");
         Console.WriteLine($"Best differing pixels: {best.Value.Diff.DifferingPixels} / {FrameDiff.PixelCount}");
+        Console.WriteLine($"Best difference bounds: {best.Value.Diff.BoundsText}");
         Console.WriteLine($"Best max channel delta: {best.Value.Diff.MaxChannelDelta}");
         Console.WriteLine($"Best total absolute channel delta: {best.Value.Diff.TotalAbsoluteChannelDelta}");
     }
@@ -1804,6 +1806,10 @@ internal static class FrameDiff
         var differingPixels = 0;
         var maxChannelDelta = 0;
         long totalAbsoluteChannelDelta = 0;
+        int? minX = null;
+        int? minY = null;
+        int? maxX = null;
+        int? maxY = null;
 
         for (var i = 0; i < actualRgb.Length; i += 3)
         {
@@ -1823,10 +1829,17 @@ internal static class FrameDiff
             if (pixelDiffers)
             {
                 differingPixels++;
+                var pixelIndex = i / 3;
+                var x = pixelIndex % 256;
+                var y = pixelIndex / 256;
+                minX = minX is null ? x : Math.Min(minX.Value, x);
+                minY = minY is null ? y : Math.Min(minY.Value, y);
+                maxX = maxX is null ? x : Math.Max(maxX.Value, x);
+                maxY = maxY is null ? y : Math.Max(maxY.Value, y);
             }
         }
 
-        return new FrameDiffResult(differingPixels, maxChannelDelta, totalAbsoluteChannelDelta);
+        return new FrameDiffResult(differingPixels, maxChannelDelta, totalAbsoluteChannelDelta, minX, minY, maxX, maxY);
     }
 
     public static byte[] CreateDiffRgb(ReadOnlySpan<byte> actualRgb, ReadOnlySpan<byte> expectedRgb)
@@ -1979,7 +1992,16 @@ internal readonly record struct FrameInputRange(ulong StartFrame, ulong EndFrame
 internal readonly record struct FrameDiffResult(
     int DifferingPixels,
     int MaxChannelDelta,
-    long TotalAbsoluteChannelDelta);
+    long TotalAbsoluteChannelDelta,
+    int? MinX,
+    int? MinY,
+    int? MaxX,
+    int? MaxY)
+{
+    public string BoundsText => MinX is null
+        ? "-"
+        : $"{MinX},{MinY}..{MaxX},{MaxY}";
+}
 
 internal sealed class SprDmaTraceRow(int row)
 {
