@@ -23,6 +23,10 @@ param(
 
     [int]$OffsetRadius = 8,
 
+    [int]$ActualXOffset = 2,
+
+    [int]$ActualYOffset = 0,
+
     [switch]$ExactRgb,
 
     [switch]$NoBuild
@@ -104,6 +108,16 @@ if ($OffsetRadius -gt 0) {
     $compareArgs.Add($OffsetRadius.ToString([System.Globalization.CultureInfo]::InvariantCulture))
 }
 
+if ($ActualXOffset -ne 0) {
+    $compareArgs.Add("--actual-x-offset")
+    $compareArgs.Add($ActualXOffset.ToString([System.Globalization.CultureInfo]::InvariantCulture))
+}
+
+if ($ActualYOffset -ne 0) {
+    $compareArgs.Add("--actual-y-offset")
+    $compareArgs.Add($ActualYOffset.ToString([System.Globalization.CultureInfo]::InvariantCulture))
+}
+
 if (-not $ExactRgb) {
     $compareArgs.Add("--normalize-palette")
 }
@@ -146,6 +160,16 @@ if ($ScanRadius -gt 0) {
     $scanArgs.Add($endFrame.ToString([System.Globalization.CultureInfo]::InvariantCulture))
     $scanArgs.Add("--max-instructions")
     $scanArgs.Add($MaxInstructions.ToString([System.Globalization.CultureInfo]::InvariantCulture))
+    if ($ActualXOffset -ne 0) {
+        $scanArgs.Add("--actual-x-offset")
+        $scanArgs.Add($ActualXOffset.ToString([System.Globalization.CultureInfo]::InvariantCulture))
+    }
+
+    if ($ActualYOffset -ne 0) {
+        $scanArgs.Add("--actual-y-offset")
+        $scanArgs.Add($ActualYOffset.ToString([System.Globalization.CultureInfo]::InvariantCulture))
+    }
+
     if (-not $ExactRgb) {
         $scanArgs.Add("--normalize-palette")
     }
