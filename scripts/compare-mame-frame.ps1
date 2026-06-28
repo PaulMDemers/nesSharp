@@ -21,6 +21,10 @@ param(
 
     [int]$ScanRadius = 0,
 
+    [int]$OffsetRadius = 8,
+
+    [switch]$ExactRgb,
+
     [switch]$NoBuild
 )
 
@@ -32,6 +36,10 @@ if ($Frame -lt 1) {
 
 if ($ScanRadius -lt 0) {
     throw "ScanRadius must be 0 or greater."
+}
+
+if ($OffsetRadius -lt 0) {
+    throw "OffsetRadius must be 0 or greater."
 }
 
 $resolvedRomPath = Resolve-Path -LiteralPath $RomPath
@@ -91,6 +99,15 @@ $compareArgs.Add("--diff-out")
 $compareArgs.Add($diffPath)
 $compareArgs.Add("--max-instructions")
 $compareArgs.Add($MaxInstructions.ToString([System.Globalization.CultureInfo]::InvariantCulture))
+if ($OffsetRadius -gt 0) {
+    $compareArgs.Add("--offset-radius")
+    $compareArgs.Add($OffsetRadius.ToString([System.Globalization.CultureInfo]::InvariantCulture))
+}
+
+if (-not $ExactRgb) {
+    $compareArgs.Add("--normalize-palette")
+}
+
 if (-not [string]::IsNullOrWhiteSpace($InputScript)) {
     $compareArgs.Add("--input")
     $compareArgs.Add($InputScript)
@@ -129,6 +146,10 @@ if ($ScanRadius -gt 0) {
     $scanArgs.Add($endFrame.ToString([System.Globalization.CultureInfo]::InvariantCulture))
     $scanArgs.Add("--max-instructions")
     $scanArgs.Add($MaxInstructions.ToString([System.Globalization.CultureInfo]::InvariantCulture))
+    if (-not $ExactRgb) {
+        $scanArgs.Add("--normalize-palette")
+    }
+
     if (-not [string]::IsNullOrWhiteSpace($InputScript)) {
         $scanArgs.Add("--input")
         $scanArgs.Add($InputScript)

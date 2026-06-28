@@ -93,7 +93,7 @@ static void PrintUsage()
     Console.WriteLine("                   Run a ROM and export the latest 256x240 framebuffer.");
     Console.WriteLine("  render-sequence <rom.nes> --out-dir frames --start-frame 1 --end-frame 300 [--step 1] [--format bmp]");
     Console.WriteLine("                   Run a ROM once and export a numbered frame sequence.");
-    Console.WriteLine("  compare-frame <rom.nes> --reference frame.ppm|frame.bmp [--frames 1] [--input \"60-90:Start\"] [--diff-out diff.bmp]");
+    Console.WriteLine("  compare-frame <rom.nes> --reference frame.ppm|frame.bmp [--frames 1] [--input \"60-90:Start\"] [--diff-out diff.bmp] [--normalize-palette] [--offset-radius N]");
     Console.WriteLine("                   Compare nesSharp RGB output against a 256x240 reference frame, optionally writing a visual diff.");
     Console.WriteLine("  scan-frame-match <rom.nes> --reference frame.ppm|frame.bmp --start-frame 1 --end-frame 300");
     Console.WriteLine("                   Compare a reference against each frame in a nesSharp frame range.");
@@ -185,7 +185,7 @@ static int CompareFrame(string[] args)
 {
     if (args.Length < 2)
     {
-        Console.Error.WriteLine("Usage: NesSharp.Cli compare-frame <rom.nes> --reference frame.ppm|frame.bmp [--frames 1] [--out actual.ppm|actual.bmp] [--diff-out diff.ppm|diff.bmp] [--input \"60-90:Start\"] [--max-instructions 50000000]");
+        Console.Error.WriteLine("Usage: NesSharp.Cli compare-frame <rom.nes> --reference frame.ppm|frame.bmp [--frames 1] [--out actual.ppm|actual.bmp] [--diff-out diff.ppm|diff.bmp] [--input \"60-90:Start\"] [--normalize-palette] [--offset-radius N] [--max-instructions 50000000]");
         return 1;
     }
 
@@ -200,6 +200,14 @@ static int CompareFrame(string[] args)
     if (!result.Completed)
     {
         Console.Error.WriteLine($"Timed out after {result.Instructions} instructions before reaching frame {result.TargetFrame}.");
+        return 1;
+    }
+
+    var normalizePalette = HasOption(args, "--normalize-palette");
+    var offsetRadius = GetIntOption(args, "--offset-radius", 0);
+    if (offsetRadius < 0)
+    {
+        Console.Error.WriteLine("--offset-radius must be 0 or greater.");
         return 1;
     }
 
@@ -218,6 +226,12 @@ static int CompareFrame(string[] args)
         Console.WriteLine($"Wrote actual frame: {Path.GetFullPath(outputPath)}");
     }
 
+    if (normalizePalette)
+    {
+        actualRgb = FrameImage.NormalizeToNesPaletteRgb(actualRgb);
+        expectedRgb = FrameImage.NormalizeToNesPaletteRgb(expectedRgb);
+    }
+
     var diff = FrameDiff.Calculate(actualRgb, expectedRgb);
     var diffOutputPath = GetOption(args, "--diff-out");
     if (!string.IsNullOrWhiteSpace(diffOutputPath))
@@ -228,10 +242,17 @@ static int CompareFrame(string[] args)
 
     Console.WriteLine($"Frame: {result.Frame}");
     Console.WriteLine($"Instructions: {result.Instructions}");
+    Console.WriteLine($"Comparison mode: {(normalizePalette ? "nes-palette" : "exact-rgb")}");
     Console.WriteLine($"Actual SHA256: {Convert.ToHexString(SHA256.HashData(actualRgb)).ToLowerInvariant()}");
     Console.WriteLine($"Reference SHA256: {Convert.ToHexString(SHA256.HashData(expectedRgb)).ToLowerInvariant()}");
     Console.WriteLine($"Differing pixels: {diff.DifferingPixels} / {FrameDiff.PixelCount}");
     Console.WriteLine($"Difference bounds: {diff.BoundsText}");
+    if (offsetRadius > 0)
+    {
+        var offset = FrameDiff.FindBestOffset(actualRgb, expectedRgb, offsetRadius);
+        Console.WriteLine($"Best offset within +/-{offsetRadius}: dx={offset.Dx}, dy={offset.Dy}, differing pixels={offset.DifferingPixels} / {offset.ComparedPixels}");
+    }
+
     Console.WriteLine($"Max channel delta: {diff.MaxChannelDelta}");
     Console.WriteLine($"Total absolute channel delta: {diff.TotalAbsoluteChannelDelta}");
 
@@ -242,7 +263,7 @@ static int ScanFrameMatch(string[] args)
 {
     if (args.Length < 2)
     {
-        Console.Error.WriteLine("Usage: NesSharp.Cli scan-frame-match <rom.nes> --reference frame.ppm|frame.bmp --start-frame 1 --end-frame 300 [--input \"60-90:Start\"] [--max-instructions 50000000]");
+        Console.Error.WriteLine("Usage: NesSharp.Cli scan-frame-match <rom.nes> --reference frame.ppm|frame.bmp --start-frame 1 --end-frame 300 [--input \"60-90:Start\"] [--normalize-palette] [--max-instructions 50000000]");
         return 1;
     }
 
@@ -261,7 +282,12 @@ static int ScanFrameMatch(string[] args)
         return 1;
     }
 
+    var normalizePalette = HasOption(args, "--normalize-palette");
     var expectedRgb = FrameImage.ReadRgb(referencePath);
+    if (normalizePalette)
+    {
+        expectedRgb = FrameImage.NormalizeToNesPaletteRgb(expectedRgb);
+    }
     var maxInstructions = GetLongOption(args, "--max-instructions", 50_000_000);
     var inputScript = FrameInputScript.Parse(GetOption(args, "--input"));
     var machine = NesMachine.LoadFile(args[1]);
@@ -287,6 +313,10 @@ static int ScanFrameMatch(string[] args)
 
         lastScannedFrame = machine.PpuBus.Frame;
         var actualRgb = FrameImage.ToRgb(machine.PpuBus.Framebuffer);
+        if (normalizePalette)
+        {
+            actualRgb = FrameImage.NormalizeToNesPaletteRgb(actualRgb);
+        }
         var diff = FrameDiff.Calculate(actualRgb, expectedRgb);
         Console.WriteLine($"{machine.PpuBus.Frame},{instructions},{diff.DifferingPixels},{FormatNullableInt(diff.MinX)},{FormatNullableInt(diff.MinY)},{FormatNullableInt(diff.MaxX)},{FormatNullableInt(diff.MaxY)},{diff.MaxChannelDelta},{diff.TotalAbsoluteChannelDelta}");
 
@@ -1593,6 +1623,48 @@ internal static class FrameImage
         return rgbFrame;
     }
 
+    public static byte[] NormalizeToNesPaletteRgb(ReadOnlySpan<byte> rgbFrame)
+    {
+        if (rgbFrame.Length != Width * Height * 3)
+        {
+            throw new InvalidDataException($"RGB frame payload has {rgbFrame.Length} bytes; expected {Width * Height * 3}.");
+        }
+
+        var normalized = new byte[rgbFrame.Length];
+        for (var i = 0; i < rgbFrame.Length; i += 3)
+        {
+            var color = FindNearestNesColor(rgbFrame[i], rgbFrame[i + 1], rgbFrame[i + 2]);
+            normalized[i] = color.R;
+            normalized[i + 1] = color.G;
+            normalized[i + 2] = color.B;
+        }
+
+        return normalized;
+    }
+
+    private static NesColor FindNearestNesColor(byte red, byte green, byte blue)
+    {
+        var bestDistance = int.MaxValue;
+        var bestColor = NesPalette.GetRgb(0);
+        for (var i = 0; i < 64; i++)
+        {
+            var candidate = NesPalette.GetRgb((byte)i);
+            var redDelta = red - candidate.R;
+            var greenDelta = green - candidate.G;
+            var blueDelta = blue - candidate.B;
+            var distance = (redDelta * redDelta) + (greenDelta * greenDelta) + (blueDelta * blueDelta);
+            if (distance >= bestDistance)
+            {
+                continue;
+            }
+
+            bestDistance = distance;
+            bestColor = candidate;
+        }
+
+        return bestColor;
+    }
+
     private static void WritePpm(string path, ReadOnlySpan<byte> framebuffer)
     {
         WritePpmRgb(path, ToRgb(framebuffer));
@@ -1868,6 +1940,58 @@ internal static class FrameDiff
         return diffRgb;
     }
 
+    public static FrameOffsetSearchResult FindBestOffset(ReadOnlySpan<byte> actualRgb, ReadOnlySpan<byte> expectedRgb, int radius)
+    {
+        if (actualRgb.Length != expectedRgb.Length)
+        {
+            throw new InvalidDataException($"Frame payload lengths differ: actual {actualRgb.Length}, expected {expectedRgb.Length}.");
+        }
+
+        var bestDx = 0;
+        var bestDy = 0;
+        var bestDifferingPixels = int.MaxValue;
+        var bestComparedPixels = 0;
+        for (var dy = -radius; dy <= radius; dy++)
+        {
+            for (var dx = -radius; dx <= radius; dx++)
+            {
+                var xStart = Math.Max(0, dx);
+                var yStart = Math.Max(0, dy);
+                var xEnd = Math.Min(256, 256 + dx);
+                var yEnd = Math.Min(240, 240 + dy);
+                var differingPixels = 0;
+                var comparedPixels = 0;
+                for (var y = yStart; y < yEnd; y++)
+                {
+                    for (var x = xStart; x < xEnd; x++)
+                    {
+                        var actualIndex = (((y - dy) * 256) + (x - dx)) * 3;
+                        var expectedIndex = ((y * 256) + x) * 3;
+                        comparedPixels++;
+                        if (actualRgb[actualIndex] != expectedRgb[expectedIndex] ||
+                            actualRgb[actualIndex + 1] != expectedRgb[expectedIndex + 1] ||
+                            actualRgb[actualIndex + 2] != expectedRgb[expectedIndex + 2])
+                        {
+                            differingPixels++;
+                        }
+                    }
+                }
+
+                if (differingPixels >= bestDifferingPixels)
+                {
+                    continue;
+                }
+
+                bestDx = dx;
+                bestDy = dy;
+                bestDifferingPixels = differingPixels;
+                bestComparedPixels = comparedPixels;
+            }
+        }
+
+        return new FrameOffsetSearchResult(bestDx, bestDy, bestDifferingPixels, bestComparedPixels);
+    }
+
     private static byte ChannelDiff(byte actual, byte expected)
     {
         var delta = Math.Abs(actual - expected);
@@ -2002,6 +2126,12 @@ internal readonly record struct FrameDiffResult(
         ? "-"
         : $"{MinX},{MinY}..{MaxX},{MaxY}";
 }
+
+internal readonly record struct FrameOffsetSearchResult(
+    int Dx,
+    int Dy,
+    int DifferingPixels,
+    int ComparedPixels);
 
 internal sealed class SprDmaTraceRow(int row)
 {
