@@ -1,9 +1,9 @@
 # Compatibility Dashboard
 
-Generated: 2026-06-28 17:27:20 -04:00
+Generated: 2026-06-28 17:32:21 -04:00
 
 - Branch: `main`
-- Commit: `0bd6a47`
+- Commit: `7017df6`
 - Configuration: `Release`
 - Slow checks: `False`
 
@@ -20,14 +20,15 @@ Generated: 2026-06-28 17:27:20 -04:00
 | --- | --- | ---: | --- | --- |
 | Super Mario Bros. 3 overworld smoke | frame 420, `60-90:Start;180-240:Start;260-420:Right+B` | 1519 / 60960 differing pixels after `dx=2` | `artifacts\frame-compare\Super_Mario_Bros_3_U_PRG_1_-frame420-*` | Residual diff is mostly animated overworld star markers and thin edge artifacts. |
 | Super Mario Bros. 3 level 1-1 smoke | frame 1000, `60-90:Start;180-240:Start;420-470:Right;540-590:Up;700-750:A;920-1500:Right+B` | 458 / 60960 differing pixels after `dx=2` | `artifacts\frame-compare\Super_Mario_Bros_3_U_PRG_1_-frame1000-*` | In-level HUD and gameplay field are structurally close; residual diff is mostly Mario/enemy animation and a thin edge/HUD boundary. |
+| Super Mario Bros. 3 later overworld route | frame 2200, `60-90:Start;180-240:Start;420-470:Right;540-590:Up;700-750:A;920-2200:Right+B` | 1029 / 60960 differing pixels after `dx=2` | `artifacts\frame-compare\Super_Mario_Bros_3_U_PRG_1_-frame2200-*` | Overworld map and HUD remain structurally aligned; residual diff is mostly character/enemy animation timing. |
 
 ## Command Results
 
 | Check | Status | Time | Command |
 | --- | --- | ---: | --- |
-| DMA/APU focused tests | pass | 23.2s | `dotnet test tests\NesSharp.Tests\NesSharp.Tests.csproj --filter ApuBusTests\|CpuBusTests\|OamDmcDmaTimingTests\|DmcDmaDuringReadRomTests\|SprDmaOutputParserExtractsRowsAndScoresDiffs --logger console;verbosity=minimal` |
-| sprdma normal | pass | 18.2s | `dotnet run -c Release --no-build --project src\NesSharp.Cli -- sprdma-report test-roms\nes-test-roms\sprdma_and_dmc_dma\sprdma_and_dmc_dma.nes` |
-| sprdma 512 | pass | 16.8s | `dotnet run -c Release --no-build --project src\NesSharp.Cli -- sprdma-report test-roms\nes-test-roms\sprdma_and_dmc_dma\sprdma_and_dmc_dma_512.nes` |
+| DMA/APU focused tests | pass | 7.5s | `dotnet test tests\NesSharp.Tests\NesSharp.Tests.csproj --filter ApuBusTests\|CpuBusTests\|OamDmcDmaTimingTests\|DmcDmaDuringReadRomTests\|SprDmaOutputParserExtractsRowsAndScoresDiffs --logger console;verbosity=minimal` |
+| sprdma normal | pass | 8.3s | `dotnet run -c Release --no-build --project src\NesSharp.Cli -- sprdma-report test-roms\nes-test-roms\sprdma_and_dmc_dma\sprdma_and_dmc_dma.nes` |
+| sprdma 512 | pass | 12.4s | `dotnet run -c Release --no-build --project src\NesSharp.Cli -- sprdma-report test-roms\nes-test-roms\sprdma_and_dmc_dma\sprdma_and_dmc_dma_512.nes` |
 
 ## Next Debugging Targets
 

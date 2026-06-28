@@ -17,6 +17,7 @@ dotnet run --project src\NesSharp.Cli -- render-frame "roms\USA\Super Mario Bros
 dotnet run --project src\NesSharp.Cli -- compare-frame "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" --frames 420 --input "60-90:Start;180-240:Start;260-420:Right+B" --reference artifacts\mame\smb3_frame420.bmp --out artifacts\frames\smb3_frame420_nessharp.bmp --diff-out artifacts\frames\smb3_frame420_diff.bmp
 .\scripts\compare-mame-frame.ps1 "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" -Frame 420 -InputScript "60-90:Start;180-240:Start;260-420:Right+B" -ScanRadius 4
 .\scripts\compare-mame-frame.ps1 "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" -Frame 1000 -InputScript "60-90:Start;180-240:Start;420-470:Right;540-590:Up;700-750:A;920-1500:Right+B" -ScanRadius 6
+.\scripts\compare-mame-frame.ps1 "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" -Frame 2200 -InputScript "60-90:Start;180-240:Start;420-470:Right;540-590:Up;700-750:A;920-2200:Right+B" -ScanRadius 10
 dotnet run --project src\NesSharp.Cli -- scan-frame-match "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" --reference artifacts\mame\smb3_frame420.bmp --start-frame 360 --end-frame 480
 dotnet run --project src\NesSharp.Cli -- sample-frames "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" --start-frame 300 --end-frame 1200 --step 60 --input "60-90:Start;180-240:Start"
 dotnet run --project src\NesSharp.Cli -- diagnose-frame "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" --frames 300
