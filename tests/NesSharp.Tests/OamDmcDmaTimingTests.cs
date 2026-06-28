@@ -39,7 +39,7 @@ public sealed class OamDmcDmaTimingTests
     }
 
     [Theory]
-    [InlineData(1, DmcDmaKind.Reload, false)]
+    [InlineData(1, DmcDmaKind.Reload, true)]
     [InlineData(2, DmcDmaKind.Reload, true)]
     [InlineData(3, DmcDmaKind.Reload, true)]
     [InlineData(4, DmcDmaKind.Reload, false)]

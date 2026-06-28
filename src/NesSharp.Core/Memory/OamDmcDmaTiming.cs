@@ -27,7 +27,7 @@ public static class OamDmcDmaTiming
             return false;
         }
 
-        return oamIndex is >= 2 and <= 3 or >= 252 and <= 254;
+        return oamIndex is >= 1 and <= 3 or >= 252 and <= 254;
     }
 }
 
