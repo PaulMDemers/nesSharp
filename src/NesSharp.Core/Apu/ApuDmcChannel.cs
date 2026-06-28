@@ -58,6 +58,10 @@ public sealed class ApuDmcChannel
 
     public byte BitsRemaining => bitsRemaining;
 
+    public ushort TimerCounter => timerCounter;
+
+    public byte SampleFetchDelayCycles => sampleFetchDelayCycles;
+
     public bool Silence => silence;
 
     public void Reset()

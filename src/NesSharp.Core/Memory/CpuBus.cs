@@ -551,7 +551,11 @@ public sealed class CpuBus
             oamDmcFirstPendingSetupCycle,
             oamDmcFirstReadySetupCycle,
             oamDmcFirstPendingIndex,
-            oamDmcFirstReadyIndex));
+            oamDmcFirstReadyIndex,
+            ApuBus.Dmc.TimerCounter,
+            ApuBus.Dmc.BitsRemaining,
+            ApuBus.Dmc.BytesRemaining,
+            ApuBus.Dmc.SampleFetchDelayCycles));
     }
 }
 
@@ -573,7 +577,11 @@ public readonly record struct CpuBusDmaDebugEntry(
     int? OamDmcFirstPendingSetupCycle,
     int? OamDmcFirstReadySetupCycle,
     int? OamDmcFirstPendingIndex,
-    int? OamDmcFirstReadyIndex);
+    int? OamDmcFirstReadyIndex,
+    ushort DmcTimerCounter,
+    byte DmcBitsRemaining,
+    ushort DmcBytesRemaining,
+    byte DmcSampleFetchDelayCycles);
 
 public readonly record struct CpuBusWriteDebugEntry(
     ushort Address,

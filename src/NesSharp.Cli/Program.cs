@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
+using NesSharp.Core.Apu;
 using NesSharp.Core.Cartridge;
 using NesSharp.Core.Cpu;
 using NesSharp.Core.Input;
@@ -680,6 +681,13 @@ static int ReportSprDma(string[] args)
                 {
                     currentRow.OamEndAccess = entry.CpuAccessCycles;
                     currentRow.OamEndTotalAccess = entry.TotalCpuAccessCycles;
+                    currentRow.EndPending = entry.IsDmcPending;
+                    currentRow.EndReady = entry.IsDmcReady;
+                    currentRow.EndDmcKind = entry.PendingDmcKind;
+                    currentRow.EndDmcTimerCounter = entry.DmcTimerCounter;
+                    currentRow.EndDmcBitsRemaining = entry.DmcBitsRemaining;
+                    currentRow.EndDmcBytesRemaining = entry.DmcBytesRemaining;
+                    currentRow.EndDmcSampleFetchDelay = entry.DmcSampleFetchDelayCycles;
                     rows.Add(currentRow);
                     postOamRow = currentRow;
                     currentRow = null;
@@ -699,6 +707,10 @@ static int ReportSprDma(string[] args)
                 postOamRow.PostOamDmcCycleDelta = postOamRow.OamEndTotalAccess is null
                     ? null
                     : SignedDifference(entry.TotalCpuAccessCycles, postOamRow.OamEndTotalAccess.Value);
+                postOamRow.PostOamDmcTimerCounter = entry.DmcTimerCounter;
+                postOamRow.PostOamDmcBitsRemaining = entry.DmcBitsRemaining;
+                postOamRow.PostOamDmcBytesRemaining = entry.DmcBytesRemaining;
+                postOamRow.PostOamDmcSampleFetchDelay = entry.DmcSampleFetchDelayCycles;
             }
 
             lastDmcEntry = entry;
@@ -742,7 +754,7 @@ static int ReportSprDma(string[] args)
     var actual = ParseSprDmaTimingRows(output);
     var expected = IsSprDma512(args[1]) ? SprDmaReportData.Expected512 : SprDmaReportData.ExpectedNormal;
 
-    Console.WriteLine("row actual expected diff start/access pending/ready retry/delay setup-p/r first-p/r dmc-index/access sched-ready(H/D/R)|obs sched-pend(H/D/R) dmc-kind pre-dmc post-dmc oam-end status-r/w status10/0 stat-first/end stat-pc write");
+    Console.WriteLine("row actual expected diff start/access pending/ready retry/delay setup-p/r first-p/r dmc-index/access sched-ready(H/D/R)|obs sched-pend(H/D/R) dmc-kind pre-dmc post-dmc oam-end end-p/r/k/t/b/bytes/d status-r/w status10/0 stat-first/end stat-pc write");
     var absoluteDiffTotal = 0;
     var maxAbsoluteDiff = 0;
     for (var i = 0; i < Math.Min(16, Math.Max(actual.Length, rows.Count)); i++)
@@ -778,6 +790,7 @@ static int ReportSprDma(string[] args)
         var preDmcText = FormatPreOamDmc(row);
         var postDmcText = FormatPostOamDmc(row);
         var oamEndText = row?.OamEndAccess?.ToString(CultureInfo.InvariantCulture) ?? "-";
+        var oamEndDmcText = FormatOamEndDmc(row);
         var statusReadWrite = row is null ? "-" : $"{row.StatusReads}/{row.StatusWrites}";
         var statusValues = row is null ? "-" : $"{row.StatusDmcActiveReads}/{row.StatusDmcInactiveReads}";
         var statusFirstText = FormatStatusFirsts(row);
@@ -785,7 +798,7 @@ static int ReportSprDma(string[] args)
         var statusWriteText = FormatStatusWrite(row);
 
         Console.WriteLine(
-            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,12} {pendingText,13} {retryText,17} {setupText,9} {firstText,9} {dmcText,16} {schedulerText,34} {pendingSchedulerText,26} {kindText,-26} {preDmcText,20} {postDmcText,20} {oamEndText,7} {statusReadWrite,10} {statusValues,10} {statusFirstText,14} {statusPcText,9} {statusWriteText,12}");
+            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,12} {pendingText,13} {retryText,17} {setupText,9} {firstText,9} {dmcText,16} {schedulerText,34} {pendingSchedulerText,26} {kindText,-26} {preDmcText,20} {postDmcText,20} {oamEndText,7} {oamEndDmcText,9} {statusReadWrite,10} {statusValues,10} {statusFirstText,14} {statusPcText,9} {statusWriteText,12}");
     }
 
     Console.WriteLine($"Diff score: abs={absoluteDiffTotal} max={maxAbsoluteDiff}");
@@ -915,7 +928,19 @@ static string FormatPostOamDmc(SprDmaTraceRow? row)
 
     return string.Create(
         CultureInfo.InvariantCulture,
-        $"{row.PostOamDmcKind}:{FormatNullableInt(row.PostOamDmcDetail)}/{FormatNullableInt(row.PostOamDmcAccess)}/{FormatNullableInt(row.PostOamDmcInstructionAccess)}+{FormatNullableLong(row.PostOamDmcCycleDelta)}");
+        $"{row.PostOamDmcKind}:{FormatNullableInt(row.PostOamDmcDetail)}/{FormatNullableInt(row.PostOamDmcAccess)}/{FormatNullableInt(row.PostOamDmcInstructionAccess)}+{FormatNullableLong(row.PostOamDmcCycleDelta)} t{FormatNullableInt(row.PostOamDmcTimerCounter)}/b{FormatNullableInt(row.PostOamDmcBitsRemaining)}/r{FormatNullableInt(row.PostOamDmcBytesRemaining)}/d{FormatNullableInt(row.PostOamDmcSampleFetchDelay)}");
+}
+
+static string FormatOamEndDmc(SprDmaTraceRow? row)
+{
+    if (row is null)
+    {
+        return "-";
+    }
+
+    return string.Create(
+        CultureInfo.InvariantCulture,
+        $"{row.EndPending}/{row.EndReady}/{row.EndDmcKind}/t{row.EndDmcTimerCounter}/b{row.EndDmcBitsRemaining}/r{row.EndDmcBytesRemaining}/d{row.EndDmcSampleFetchDelay}");
 }
 
 static string FormatNullableLong(long? value)
@@ -1953,9 +1978,31 @@ internal sealed class SprDmaTraceRow(int row)
 
     public long? PostOamDmcCycleDelta { get; set; }
 
+    public int? PostOamDmcTimerCounter { get; set; }
+
+    public int? PostOamDmcBitsRemaining { get; set; }
+
+    public int? PostOamDmcBytesRemaining { get; set; }
+
+    public int? PostOamDmcSampleFetchDelay { get; set; }
+
     public int? OamEndAccess { get; set; }
 
     public ulong? OamEndTotalAccess { get; set; }
+
+    public bool EndPending { get; set; }
+
+    public bool EndReady { get; set; }
+
+    public DmcDmaKind EndDmcKind { get; set; }
+
+    public ushort EndDmcTimerCounter { get; set; }
+
+    public byte EndDmcBitsRemaining { get; set; }
+
+    public ushort EndDmcBytesRemaining { get; set; }
+
+    public byte EndDmcSampleFetchDelay { get; set; }
 
     public int StatusReads { get; set; }
 
