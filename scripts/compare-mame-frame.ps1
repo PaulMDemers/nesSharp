@@ -44,6 +44,8 @@ $artifactBaseName = "$safeRomBaseName-frame$Frame"
 $referencePath = Join-Path $outputDirectory "$artifactBaseName-mame.bmp"
 $actualPath = Join-Path $outputDirectory "$artifactBaseName-nessharp.bmp"
 $diffPath = Join-Path $outputDirectory "$artifactBaseName-diff.bmp"
+$compareLogPath = Join-Path $outputDirectory "$artifactBaseName-compare.txt"
+$scanLogPath = Join-Path $outputDirectory "$artifactBaseName-scan.txt"
 
 $captureScriptPath = Join-Path $PSScriptRoot "capture-mame-frame.ps1"
 & $captureScriptPath `
@@ -94,12 +96,14 @@ if (-not [string]::IsNullOrWhiteSpace($InputScript)) {
     $compareArgs.Add($InputScript)
 }
 
-dotnet @compareArgs
+$compareOutput = dotnet @compareArgs 2>&1
 $compareExitCode = $LASTEXITCODE
+$compareOutput | Tee-Object -FilePath $compareLogPath
 
 Write-Output "Reference frame: $referencePath"
 Write-Output "nesSharp frame:  $actualPath"
 Write-Output "Diff frame:      $diffPath"
+Write-Output "Compare log:     $compareLogPath"
 
 if ($ScanRadius -gt 0) {
     $startFrame = [Math]::Max(1, $Frame - $ScanRadius)
@@ -130,7 +134,9 @@ if ($ScanRadius -gt 0) {
         $scanArgs.Add($InputScript)
     }
 
-    dotnet @scanArgs
+    $scanOutput = dotnet @scanArgs 2>&1
+    $scanOutput | Tee-Object -FilePath $scanLogPath
+    Write-Output "Scan log:        $scanLogPath"
 }
 
 exit $compareExitCode
