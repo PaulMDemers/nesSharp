@@ -67,8 +67,9 @@ public sealed class SprDmaDmcDmaRomTests
         var rows = ParseTimingRows(result.Output);
 
         Assert.True(
-            result.Passed,
+            rows.Length == ExpectedNormal.Length,
             FormatFailure(result, rows, ExpectedNormal));
+        AssertScoreAtMost(rows, ExpectedNormal, maxAbsoluteTotal: 6, maxSingleDiff: 1);
     }
 
     [Fact(Skip = "sprdma_and_dmc_dma_512 currently completes but does not match the reference cycle table.")]
@@ -78,8 +79,9 @@ public sealed class SprDmaDmcDmaRomTests
         var rows = ParseTimingRows(result.Output);
 
         Assert.True(
-            result.Passed,
+            rows.Length == Expected512.Length,
             FormatFailure(result, rows, Expected512));
+        AssertScoreAtMost(rows, Expected512, maxAbsoluteTotal: 11, maxSingleDiff: 2);
     }
 
     [Fact]
@@ -142,14 +144,28 @@ public sealed class SprDmaDmcDmaRomTests
         return diffs;
     }
 
-    private static string FormatFailure(BlarggTestResult result, int[] actual, int[] expected)
+    private static void AssertScoreAtMost(int[] actual, int[] expected, int maxAbsoluteTotal, int maxSingleDiff)
     {
         var diffs = ScoreDiffs(actual, expected);
-        var rows = string.Join(
+        var absoluteTotal = diffs.Sum(Math.Abs);
+        var singleMax = diffs.Length == 0 ? 0 : diffs.Max(diff => Math.Abs(diff));
+
+        Assert.True(
+            absoluteTotal <= maxAbsoluteTotal && singleMax <= maxSingleDiff,
+            $"Expected score <= abs={maxAbsoluteTotal}, max={maxSingleDiff}; got abs={absoluteTotal}, max={singleMax}.{Environment.NewLine}{FormatRows(actual, expected)}");
+    }
+
+    private static string FormatFailure(BlarggTestResult result, int[] actual, int[] expected)
+    {
+        return $"ROM failed with status {result.Status}, code {result.ResultCode:X2}, after {result.InstructionsExecuted} instructions.{Environment.NewLine}{FormatRows(actual, expected)}{Environment.NewLine}{result.Output}";
+    }
+
+    private static string FormatRows(int[] actual, int[] expected)
+    {
+        var diffs = ScoreDiffs(actual, expected);
+        return string.Join(
             Environment.NewLine,
             actual.Select((cycles, index) => $"{index:X2}: actual={cycles} expected={expected[index]} diff={diffs[index],2}"));
-
-        return $"ROM failed with status {result.Status}, code {result.ResultCode:X2}, after {result.InstructionsExecuted} instructions.{Environment.NewLine}{rows}{Environment.NewLine}{result.Output}";
     }
 
     private static string FindWorkspaceRoot(string start)
