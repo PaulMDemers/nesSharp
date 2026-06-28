@@ -799,7 +799,7 @@ static int ReportSprDma(string[] args)
     var actual = ParseSprDmaTimingRows(output);
     var expected = IsSprDma512(args[1]) ? SprDmaReportData.Expected512 : SprDmaReportData.ExpectedNormal;
 
-    Console.WriteLine("row actual expected diff start/access pending/ready retry/delay setup-p/r first-p/r dmc-index/access sched-ready(H/D/R)|obs sched-pend(H/D/R) dmc-kind pre-dmc post-dmc oam-end end-p/r/k/t/b/bytes/d status-r/w status10/0 stat-first/end stat-pc write");
+    Console.WriteLine("row actual expected diff start/access pending/ready retry/delay setup-p/r first-p/r dmc-index/access sched-ready(H/D/R)|obs sched-pend(H/D/R) sched-best dmc-kind pre-dmc post-dmc oam-end end-p/r/k/t/b/bytes/d status-r/w status10/0 stat-first/end stat-pc write");
     var absoluteDiffTotal = 0;
     var maxAbsoluteDiff = 0;
     for (var i = 0; i < Math.Min(16, Math.Max(actual.Length, rows.Count)); i++)
@@ -837,6 +837,7 @@ static int ReportSprDma(string[] args)
         var kindText = row?.DmcKind ?? "-";
         var schedulerText = FormatSchedulerShadow(row, usePendingStart: false);
         var pendingSchedulerText = FormatSchedulerShadow(row, usePendingStart: true);
+        var bestSchedulerText = FormatBestSchedulerShadow(row);
         var preDmcText = FormatPreOamDmc(row);
         var postDmcText = FormatPostOamDmc(row);
         var oamEndText = row?.OamEndAccess?.ToString(CultureInfo.InvariantCulture) ?? "-";
@@ -848,7 +849,7 @@ static int ReportSprDma(string[] args)
         var statusWriteText = FormatStatusWrite(row);
 
         Console.WriteLine(
-            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,12} {pendingText,13} {retryText,17} {setupText,9} {firstText,9} {dmcText,16} {schedulerText,34} {pendingSchedulerText,26} {kindText,-26} {preDmcText,20} {postDmcText,20} {oamEndText,7} {oamEndDmcText,9} {statusReadWrite,10} {statusValues,10} {statusFirstText,14} {statusPcText,9} {statusWriteText,12}");
+            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,12} {pendingText,13} {retryText,17} {setupText,9} {firstText,9} {dmcText,16} {schedulerText,34} {pendingSchedulerText,26} {bestSchedulerText,14} {kindText,-26} {preDmcText,20} {postDmcText,20} {oamEndText,7} {oamEndDmcText,9} {statusReadWrite,10} {statusValues,10} {statusFirstText,14} {statusPcText,9} {statusWriteText,12}");
     }
 
     Console.WriteLine($"Diff score: abs={absoluteDiffTotal} max={maxAbsoluteDiff}");
@@ -1074,6 +1075,94 @@ static string FormatSchedulerShadow(SprDmaTraceRow? row, bool usePendingStart)
     return string.Create(
         CultureInfo.InvariantCulture,
         $"H{needHalt} D{needDummy} R{ready}|{observedDmc}:{observedEnd}");
+}
+
+static string FormatBestSchedulerShadow(SprDmaTraceRow? row)
+{
+    if (row?.DmcAccess is null || row.OamEndAccess is null)
+    {
+        return "-";
+    }
+
+    SchedulerShadowCandidate? best = null;
+    foreach (var candidate in EnumerateSchedulerShadowCandidates(row))
+    {
+        if (best is null || candidate.Score < best.Value.Score)
+        {
+            best = candidate;
+        }
+    }
+
+    if (best is null)
+    {
+        return "-";
+    }
+
+    return string.Create(
+        CultureInfo.InvariantCulture,
+        $"{best.Value.StartSource}:{best.Value.State} d{best.Value.DmcDelta} e{best.Value.EndDelta}");
+}
+
+static IEnumerable<SchedulerShadowCandidate> EnumerateSchedulerShadowCandidates(SprDmaTraceRow row)
+{
+    int? observedDmc = row.DmcAccess is null ? null : row.DmcAccess.Value - row.StartAccess;
+    int? observedEnd = row.OamEndAccess is null ? null : row.OamEndAccess.Value - row.StartAccess;
+    if (observedDmc is null || observedEnd is null)
+    {
+        yield break;
+    }
+
+    foreach (var (source, startCycle) in EnumerateSchedulerStartCycles(row))
+    {
+        foreach (var state in new[] { CpuDmaDmcState.NeedHalt, CpuDmaDmcState.NeedDummy, CpuDmaDmcState.ReadyToRead })
+        {
+            var schedule = CpuDmaScheduler.Simulate(new CpuDmaScheduleRequest(
+                row.StartNextIsGet,
+                OamByteCount: 256,
+                startCycle,
+                DmcStartState: state));
+            var dmcRead = schedule.Events.FirstOrDefault(e => e.Kind == CpuDmaCycleKind.DmcRead);
+            if (dmcRead.Kind != CpuDmaCycleKind.DmcRead)
+            {
+                continue;
+            }
+
+            var dmcDelta = dmcRead.Cycle - observedDmc.Value;
+            var endDelta = schedule.CycleCount - observedEnd.Value;
+            yield return new SchedulerShadowCandidate(
+                source,
+                FormatSchedulerStateName(state),
+                dmcDelta,
+                endDelta,
+                Math.Abs(dmcDelta) + Math.Abs(endDelta));
+        }
+    }
+}
+
+static IEnumerable<(string Source, int StartCycle)> EnumerateSchedulerStartCycles(SprDmaTraceRow row)
+{
+    var readyStart = EstimateSchedulerDmcReadyStartCycle(row);
+    if (readyStart is not null)
+    {
+        yield return ("ready", readyStart.Value);
+    }
+
+    var pendingStart = EstimateSchedulerDmcPendingStartCycle(row);
+    if (pendingStart is not null)
+    {
+        yield return ("pend", pendingStart.Value);
+    }
+}
+
+static string FormatSchedulerStateName(CpuDmaDmcState state)
+{
+    return state switch
+    {
+        CpuDmaDmcState.NeedHalt => "H",
+        CpuDmaDmcState.NeedDummy => "D",
+        CpuDmaDmcState.ReadyToRead => "R",
+        _ => "?"
+    };
 }
 
 static string FormatSchedulerShadowState(SprDmaTraceRow row, int dmcStartCycle, CpuDmaDmcState dmcStartState)
@@ -2238,6 +2327,13 @@ internal readonly record struct FrameOffsetSearchResult(
     int Dy,
     int DifferingPixels,
     int ComparedPixels);
+
+internal readonly record struct SchedulerShadowCandidate(
+    string StartSource,
+    string State,
+    int DmcDelta,
+    int EndDelta,
+    int Score);
 
 internal sealed class SprDmaTraceRow(int row)
 {
