@@ -246,7 +246,20 @@ public sealed class CpuBus
                 ppu.FineX,
                 ppu.ScrollX,
                 ppu.ScrollY,
-                ppu.WriteToggle));
+                ppu.WriteToggle,
+                totalCpuAccessCycles,
+                CpuAccessCycles,
+                instructionAccessCycles,
+                ApuBus.Dmc.IsActive,
+                ApuBus.IsDmcDmaPending,
+                ApuBus.IsDmcDmaReady,
+                ApuBus.PendingDmcDmaKind,
+                ApuBus.PendingDmcDmaAddress,
+                ApuBus.Dmc.TimerCounter,
+                ApuBus.Dmc.BitsRemaining,
+                ApuBus.Dmc.BytesRemaining,
+                ApuBus.Dmc.SampleFetchDelayCycles,
+                ApuBus.Dmc.SampleBufferEmpty));
         }
     }
 
@@ -606,7 +619,20 @@ public readonly record struct CpuBusWriteDebugEntry(
     byte FineX,
     int ScrollX,
     int ScrollY,
-    bool WriteToggle);
+    bool WriteToggle,
+    ulong TotalCpuAccessCycles,
+    int CpuAccessCycles,
+    int InstructionAccessCycles,
+    bool DmcIsActive,
+    bool IsDmcDmaPending,
+    bool IsDmcDmaReady,
+    DmcDmaKind PendingDmcKind,
+    ushort PendingDmcAddress,
+    ushort DmcTimerCounter,
+    byte DmcBitsRemaining,
+    ushort DmcBytesRemaining,
+    byte DmcSampleFetchDelayCycles,
+    bool DmcSampleBufferEmpty);
 
 public readonly record struct CpuBusReadDebugEntry(
     ushort Address,

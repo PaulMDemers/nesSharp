@@ -951,6 +951,7 @@ static void TrackStatusWrite(SprDmaTraceRow? row, CpuBusWriteDebugEntry entry, u
     row.StatusWrites++;
     row.LastStatusWriteValue = entry.Value;
     row.LastStatusWritePc = pc;
+    row.LastStatusWriteState = FormatDmcWriteState(entry);
 }
 
 static string FormatNullableInt(int? value)
@@ -1002,6 +1003,13 @@ static string FormatDmcReadState(CpuBusReadDebugEntry entry)
         $"t{entry.DmcTimerCounter}/b{entry.DmcBitsRemaining}/r{entry.DmcBytesRemaining}/d{entry.DmcSampleFetchDelayCycles}/buf{(entry.DmcSampleBufferEmpty ? 0 : 1)}/dma{(entry.IsDmcDmaPending ? 1 : 0)}{(entry.IsDmcDmaReady ? 1 : 0)}");
 }
 
+static string FormatDmcWriteState(CpuBusWriteDebugEntry entry)
+{
+    return string.Create(
+        CultureInfo.InvariantCulture,
+        $"t{entry.DmcTimerCounter}/b{entry.DmcBitsRemaining}/r{entry.DmcBytesRemaining}/d{entry.DmcSampleFetchDelayCycles}/buf{(entry.DmcSampleBufferEmpty ? 0 : 1)}/dma{(entry.IsDmcDmaPending ? 1 : 0)}{(entry.IsDmcDmaReady ? 1 : 0)}");
+}
+
 static string FormatStatusWrite(SprDmaTraceRow? row)
 {
     if (row?.LastStatusWriteValue is null || row.LastStatusWritePc is null)
@@ -1009,7 +1017,7 @@ static string FormatStatusWrite(SprDmaTraceRow? row)
         return "-";
     }
 
-    return $"{row.LastStatusWritePc.Value:X4}:${row.LastStatusWriteValue.Value:X2}";
+    return $"{row.LastStatusWritePc.Value:X4}:${row.LastStatusWriteValue.Value:X2}:{row.LastStatusWriteState ?? "-"}";
 }
 
 static string FormatNullableHex(ushort? value) => value?.ToString("X4", CultureInfo.InvariantCulture) ?? "-";
@@ -2466,6 +2474,8 @@ internal sealed class SprDmaTraceRow(int row)
     public ushort? LastStatusWritePc { get; set; }
 
     public byte? LastStatusWriteValue { get; set; }
+
+    public string? LastStatusWriteState { get; set; }
 }
 
 internal static class SprDmaReportData
