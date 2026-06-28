@@ -357,3 +357,16 @@ Reload DMC DMA at OAM indices 2-3 now uses the same no-final-realignment path as
 This reduces the normal ROM's absolute row error from 12 to 8 without changing the `_512` checkpoint table.
 
 A follow-up probe tried skipping the final OAM realignment for early indices 2-3 only when the DMC request was already pending before the serviced OAM byte. It improved the immediate low rows but shifted the following DMC service point and worsened the normal ROM overall, so the simpler index 2-3 rule remains in place.
+
+## Source recheck
+
+The mirrored `sprdma_and_dmc_dma` source in koute's `pinky` repository (`https://github.com/koute/pinky/tree/master/nes-testsuite/roms/sprdma_and_dmc_dma/source`) keeps the measured body deliberately tiny:
+
+```asm
+test:   lda #$07
+        sta $4014
+        sta $100
+        rts
+```
+
+The shared timing include states that a memory write during DMC DMA access makes that DMC DMA take 3 clocks instead of the usual 4. The DMC synchronization helpers use one-byte samples, repeated `$4015` starts, and status polling loops; they also explicitly warn that writes inside the sync loop affect timing. That matches the current evidence: the remaining `_512` misses are split between the last OAM-byte collision rows and post-OAM `$4015` sync-loop rows. The next model change should therefore represent the DMC DMA unit as a state machine with separate halt, dummy, alignment, and get phases across CPU/OAM cycles rather than adding more broad OAM index exceptions.
