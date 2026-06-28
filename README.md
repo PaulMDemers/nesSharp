@@ -14,7 +14,8 @@ dotnet run --project src\NesSharp.Cli -- test-rom test-roms\nes-test-roms\ppu_vb
 dotnet run --project src\NesSharp.Cli -- render-frame test-roms\nes-test-roms\ppu_read_buffer\test_ppu_read_buffer.nes --frames 120 --out artifacts\frames\ppu_read_buffer_frame120.ppm
 dotnet run --project src\NesSharp.Cli -- render-frame "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" --frames 420 --input "60-90:Start;180-240:Start;260-420:Right+B" --out artifacts\frames\smb3_frame420_nessharp.bmp
 .\scripts\capture-mame-frame.ps1 "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" -Frame 420 -InputScript "60-90:Start;180-240:Start;260-420:Right+B" -OutPath artifacts\mame\smb3_frame420.bmp
-dotnet run --project src\NesSharp.Cli -- compare-frame "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" --frames 420 --input "60-90:Start;180-240:Start;260-420:Right+B" --reference artifacts\mame\smb3_frame420.bmp --out artifacts\frames\smb3_frame420_nessharp.bmp
+dotnet run --project src\NesSharp.Cli -- compare-frame "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" --frames 420 --input "60-90:Start;180-240:Start;260-420:Right+B" --reference artifacts\mame\smb3_frame420.bmp --out artifacts\frames\smb3_frame420_nessharp.bmp --diff-out artifacts\frames\smb3_frame420_diff.bmp
+.\scripts\compare-mame-frame.ps1 "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" -Frame 420 -InputScript "60-90:Start;180-240:Start;260-420:Right+B" -ScanRadius 4
 dotnet run --project src\NesSharp.Cli -- scan-frame-match "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" --reference artifacts\mame\smb3_frame420.bmp --start-frame 360 --end-frame 480
 dotnet run --project src\NesSharp.Cli -- sample-frames "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" --start-frame 300 --end-frame 1200 --step 60 --input "60-90:Start;180-240:Start"
 dotnet run --project src\NesSharp.Cli -- diagnose-frame "roms\USA\Super Mario Bros 3 (U) (PRG 1).nes" --frames 300
@@ -24,9 +25,9 @@ dotnet run --project src\NesSharp.Desktop -- test-roms\nes-test-roms\ppu_read_bu
 Desktop controller 1 mapping: `Z` = A, `X` = B, `Backspace` = Select, `Enter` = Start, arrow keys = D-pad. Use `Ctrl+R` for reset, `Ctrl+Shift+R` for power cycle, Space to pause, `F10` to advance one frame, and `Ctrl+D` to capture the current frame plus PPU/OAM/Mapper 4 diagnostics under `artifacts\desktop-captures`.
 Battery-backed saves are loaded from and written to a `.sav` file beside the ROM in the desktop host.
 
-`render-frame` and `compare-frame` support 256x240 binary PPM (`P6`) and uncompressed 24-bit BMP files. MAME snapshots are commonly PNG files; convert those to BMP or PPM first, then compare the converted reference against nesSharp's rendered frame.
+`render-frame` and `compare-frame` support 256x240 binary PPM (`P6`) and uncompressed 24-bit BMP files. `compare-frame --diff-out` writes a black-background visual diff image where changed channels are amplified for inspection.
 Frame rendering commands also support `--input`, using semicolon-separated frame ranges like `60-90:Start;260-420:Right+B`.
-For local reference captures, MAME 0.288 can be installed under `tools\mame-0.288\mame.exe`; the `tools` folder is intentionally ignored by git. `scripts\capture-mame-frame.ps1` uses MAME Lua frame callbacks to capture exact reference frames, supports `-InputScript` with the same frame-range syntax as nesSharp, and converts MAME's PNG snapshot to BMP/PPM/PNG output.
+For local reference captures, MAME 0.288 can be installed under `tools\mame-0.288\mame.exe`; the `tools` folder is intentionally ignored by git. `scripts\capture-mame-frame.ps1` uses MAME Lua frame callbacks to capture exact reference frames, supports `-InputScript` with the same frame-range syntax as nesSharp, and converts MAME's PNG snapshot to BMP/PPM/PNG output. `scripts\compare-mame-frame.ps1` wraps the full capture/compare loop and writes MAME, nesSharp, and diff BMPs under `artifacts\frame-compare`; use `-ScanRadius N` to scan nearby nesSharp frames against the captured MAME reference.
 Use `dotnet run --project src\NesSharp.Cli -- trace-dma <rom.nes>` to inspect OAM/DMC DMA event timing while working on DMA overlap compatibility.
 
 ## Current Status

@@ -93,8 +93,8 @@ static void PrintUsage()
     Console.WriteLine("                   Run a ROM and export the latest 256x240 framebuffer.");
     Console.WriteLine("  render-sequence <rom.nes> --out-dir frames --start-frame 1 --end-frame 300 [--step 1] [--format bmp]");
     Console.WriteLine("                   Run a ROM once and export a numbered frame sequence.");
-    Console.WriteLine("  compare-frame <rom.nes> --reference frame.ppm|frame.bmp [--frames 1] [--input \"60-90:Start\"]");
-    Console.WriteLine("                   Compare nesSharp RGB output against a 256x240 reference frame.");
+    Console.WriteLine("  compare-frame <rom.nes> --reference frame.ppm|frame.bmp [--frames 1] [--input \"60-90:Start\"] [--diff-out diff.bmp]");
+    Console.WriteLine("                   Compare nesSharp RGB output against a 256x240 reference frame, optionally writing a visual diff.");
     Console.WriteLine("  scan-frame-match <rom.nes> --reference frame.ppm|frame.bmp --start-frame 1 --end-frame 300");
     Console.WriteLine("                   Compare a reference against each frame in a nesSharp frame range.");
     Console.WriteLine("  sample-frames <rom.nes> --end-frame 1200 [--start-frame 1] [--step 60] [--input \"60-90:Start\"]");
@@ -185,7 +185,7 @@ static int CompareFrame(string[] args)
 {
     if (args.Length < 2)
     {
-        Console.Error.WriteLine("Usage: NesSharp.Cli compare-frame <rom.nes> --reference frame.ppm|frame.bmp [--frames 1] [--out actual.ppm|actual.bmp] [--input \"60-90:Start\"] [--max-instructions 50000000]");
+        Console.Error.WriteLine("Usage: NesSharp.Cli compare-frame <rom.nes> --reference frame.ppm|frame.bmp [--frames 1] [--out actual.ppm|actual.bmp] [--diff-out diff.ppm|diff.bmp] [--input \"60-90:Start\"] [--max-instructions 50000000]");
         return 1;
     }
 
@@ -219,6 +219,13 @@ static int CompareFrame(string[] args)
     }
 
     var diff = FrameDiff.Calculate(actualRgb, expectedRgb);
+    var diffOutputPath = GetOption(args, "--diff-out");
+    if (!string.IsNullOrWhiteSpace(diffOutputPath))
+    {
+        FrameImage.WriteRgb(diffOutputPath, FrameDiff.CreateDiffRgb(actualRgb, expectedRgb));
+        Console.WriteLine($"Wrote diff frame: {Path.GetFullPath(diffOutputPath)}");
+    }
+
     Console.WriteLine($"Frame: {result.Frame}");
     Console.WriteLine($"Instructions: {result.Instructions}");
     Console.WriteLine($"Actual SHA256: {Convert.ToHexString(SHA256.HashData(actualRgb)).ToLowerInvariant()}");
@@ -1533,14 +1540,24 @@ internal static class FrameImage
 
     public static void Write(string path, ReadOnlySpan<byte> framebuffer)
     {
+        WriteRgb(path, ToRgb(framebuffer));
+    }
+
+    public static void WriteRgb(string path, ReadOnlySpan<byte> rgbFrame)
+    {
+        if (rgbFrame.Length != Width * Height * 3)
+        {
+            throw new InvalidDataException($"RGB frame payload has {rgbFrame.Length} bytes; expected {Width * Height * 3}.");
+        }
+
         var extension = Path.GetExtension(path).ToLowerInvariant();
         switch (extension)
         {
             case ".ppm":
-                WritePpm(path, framebuffer);
+                WritePpmRgb(path, rgbFrame);
                 break;
             case ".bmp":
-                WriteBmp(path, framebuffer);
+                WriteBmpRgb(path, rgbFrame);
                 break;
             default:
                 throw new InvalidDataException("Frame output must use .ppm or .bmp.");
@@ -1576,13 +1593,17 @@ internal static class FrameImage
 
     private static void WritePpm(string path, ReadOnlySpan<byte> framebuffer)
     {
+        WritePpmRgb(path, ToRgb(framebuffer));
+    }
+
+    private static void WritePpmRgb(string path, ReadOnlySpan<byte> rgbFrame)
+    {
         CreateParentDirectory(path);
         using var stream = File.Create(path);
         using var writer = new StreamWriter(stream, leaveOpen: true);
         writer.Write($"P6\n{Width} {Height}\n255\n");
         writer.Flush();
 
-        var rgbFrame = ToRgb(framebuffer);
         stream.Write(rgbFrame);
     }
 
@@ -1613,8 +1634,12 @@ internal static class FrameImage
 
     private static void WriteBmp(string path, ReadOnlySpan<byte> framebuffer)
     {
+        WriteBmpRgb(path, ToRgb(framebuffer));
+    }
+
+    private static void WriteBmpRgb(string path, ReadOnlySpan<byte> rgbFrame)
+    {
         CreateParentDirectory(path);
-        var rgbFrame = ToRgb(framebuffer);
         var rowStride = GetBmpRowStride(Width);
         var pixelDataSize = rowStride * Height;
         var fileSize = 14 + 40 + pixelDataSize;
@@ -1771,6 +1796,9 @@ internal static class FrameDiff
 {
     public const int PixelCount = 256 * 240;
 
+    private const int DiffAmplification = 4;
+    private const int MinimumVisibleDiff = 32;
+
     public static FrameDiffResult Calculate(ReadOnlySpan<byte> actualRgb, ReadOnlySpan<byte> expectedRgb)
     {
         var differingPixels = 0;
@@ -1799,6 +1827,43 @@ internal static class FrameDiff
         }
 
         return new FrameDiffResult(differingPixels, maxChannelDelta, totalAbsoluteChannelDelta);
+    }
+
+    public static byte[] CreateDiffRgb(ReadOnlySpan<byte> actualRgb, ReadOnlySpan<byte> expectedRgb)
+    {
+        if (actualRgb.Length != expectedRgb.Length)
+        {
+            throw new InvalidDataException($"Frame payload lengths differ: actual {actualRgb.Length}, expected {expectedRgb.Length}.");
+        }
+
+        var diffRgb = new byte[actualRgb.Length];
+        for (var i = 0; i < actualRgb.Length; i += 3)
+        {
+            var red = ChannelDiff(actualRgb[i], expectedRgb[i]);
+            var green = ChannelDiff(actualRgb[i + 1], expectedRgb[i + 1]);
+            var blue = ChannelDiff(actualRgb[i + 2], expectedRgb[i + 2]);
+            if (red == 0 && green == 0 && blue == 0)
+            {
+                continue;
+            }
+
+            diffRgb[i] = red;
+            diffRgb[i + 1] = green;
+            diffRgb[i + 2] = blue;
+        }
+
+        return diffRgb;
+    }
+
+    private static byte ChannelDiff(byte actual, byte expected)
+    {
+        var delta = Math.Abs(actual - expected);
+        if (delta == 0)
+        {
+            return 0;
+        }
+
+        return (byte)Math.Clamp(delta * DiffAmplification, MinimumVisibleDiff, 255);
     }
 }
 
