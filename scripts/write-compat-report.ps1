@@ -164,6 +164,7 @@ try {
     $lines.Add("| Case | Frame/Input | Current | Artifacts | Notes |")
     $lines.Add("| --- | --- | ---: | --- | --- |")
     $lines.Add("| Super Mario Bros. 3 overworld smoke | frame 420, ``60-90:Start;180-240:Start;260-420:Right+B`` | 1519 / 60960 differing pixels after ``dx=2`` | ``artifacts\frame-compare\Super_Mario_Bros_3_U_PRG_1_-frame420-*`` | Residual diff is mostly animated overworld star markers and thin edge artifacts. |")
+    $lines.Add("| Super Mario Bros. 3 level 1-1 smoke | frame 1000, ``60-90:Start;180-240:Start;420-470:Right;540-590:Up;700-750:A;920-1500:Right+B`` | 458 / 60960 differing pixels after ``dx=2`` | ``artifacts\frame-compare\Super_Mario_Bros_3_U_PRG_1_-frame1000-*`` | In-level HUD and gameplay field are structurally close; residual diff is mostly Mario/enemy animation and a thin edge/HUD boundary. |")
     $lines.Add("")
     $lines.Add("## Command Results")
     $lines.Add("")
