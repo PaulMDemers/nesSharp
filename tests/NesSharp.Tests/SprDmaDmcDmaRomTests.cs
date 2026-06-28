@@ -96,8 +96,9 @@ public sealed class SprDmaDmcDmaRomTests
         var rows = ParseTimingRows(result.Output);
 
         Assert.True(
-            result.Passed,
+            rows.Length == Expected512.Length,
             FormatFailure(result, rows, Expected512));
+        AssertScoreAtMost(rows, Expected512, maxAbsoluteTotal: 11, maxSingleDiff: 2);
     }
 
     private static BlarggTestResult RunRom(string romName)

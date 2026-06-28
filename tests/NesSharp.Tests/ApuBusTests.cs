@@ -356,6 +356,24 @@ public sealed class ApuBusTests
     }
 
     [Fact]
+    public void DmcEnableDoesNotRestartActiveSample()
+    {
+        var apu = new ApuBus();
+        apu.WriteRegister(0x4013, 0x02);
+        apu.WriteRegister(0x4015, 0x10);
+
+        apu.CompleteDmcDma(0x55);
+        var address = apu.Dmc.CurrentAddress;
+        var bytesRemaining = apu.Dmc.BytesRemaining;
+        apu.WriteRegister(0x4012, 0x20);
+
+        apu.WriteRegister(0x4015, 0x10);
+
+        Assert.Equal(address, apu.Dmc.CurrentAddress);
+        Assert.Equal(bytesRemaining, apu.Dmc.BytesRemaining);
+    }
+
+    [Fact]
     public void DmcControlWriteClearsInterruptWhenIrqDisabled()
     {
         var apu = new ApuBus();

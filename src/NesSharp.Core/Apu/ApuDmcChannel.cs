@@ -116,12 +116,12 @@ public sealed class ApuDmcChannel
     {
         if (enabled)
         {
-            if (BytesRemaining == 0)
+            var wasInactive = BytesRemaining == 0;
+            if (wasInactive)
             {
                 RestartSample();
+                RequestSampleFetch(DmcDmaKind.Load);
             }
-
-            RequestSampleFetch(DmcDmaKind.Load);
         }
         else
         {
