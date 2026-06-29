@@ -6,6 +6,9 @@ A C# NES emulator project with a headless test harness, early desktop host, CPU 
 
 ```powershell
 dotnet test NesSharp.slnx
+.\scripts\run-compat-tests.ps1
+.\scripts\run-compat-tests.ps1 -IncludeSprDma
+.\scripts\run-compat-tests.ps1 -IncludeSlow
 dotnet build NesSharp.slnx
 dotnet run --project src\NesSharp.Cli -- info test-roms\nes-test-roms\other\nestest.nes
 dotnet run --project src\NesSharp.Cli -- nestest test-roms\nes-test-roms\other\nestest.nes test-roms\nes-test-roms\other\nestest.log
@@ -26,6 +29,8 @@ dotnet run --project src\NesSharp.Desktop -- test-roms\nes-test-roms\ppu_read_bu
 
 Desktop controller 1 mapping: `Z` = A, `X` = B, `Backspace` = Select, `Enter` = Start, arrow keys = D-pad. Use `Ctrl+R` for reset, `Ctrl+Shift+R` for power cycle, Space to pause, `F10` to advance one frame, and `Ctrl+D` to capture the current frame plus PPU/OAM/Mapper 4 diagnostics under `artifacts\desktop-captures`.
 Battery-backed saves are loaded from and written to a `.sav` file beside the ROM in the desktop host.
+
+For day-to-day compatibility work, prefer `scripts\run-compat-tests.ps1` over the full solution test command. It builds once, runs the fast mapper/PPU/APU/CPU/DMA groups serially, and leaves heavyweight aggregate CPU instruction ROM suites behind `-IncludeSlow`. The SPR-DMA/DMC guard ROMs are opt-in with `-IncludeSprDma` because they document the current near-miss timing scores while that edge case is still under active investigation.
 
 `render-frame` and `compare-frame` support 256x240 binary PPM (`P6`) and uncompressed 24-bit BMP files. `compare-frame` reports the bounding box of changed pixels, `--diff-out` writes a black-background visual diff image where changed channels are amplified for inspection, `--normalize-palette` snaps RGB frames to the nearest nesSharp NES palette color before comparing, `--actual-x-offset/--actual-y-offset` compare with an applied actual-frame offset, and `--offset-radius N` reports the best small x/y alignment offset. The MAME wrapper uses palette-normalized comparison, `-ActualXOffset 2`, and `-OffsetRadius 8` by default; pass `-ExactRgb` for strict screenshot RGB comparison.
 Frame rendering commands also support `--input`, using semicolon-separated frame ranges like `60-90:Start;260-420:Right+B`.
