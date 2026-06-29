@@ -93,7 +93,7 @@ static void PrintUsage()
     Console.WriteLine("                   Run a ROM and export the latest 256x240 framebuffer.");
     Console.WriteLine("  render-sequence <rom.nes> --out-dir frames --start-frame 1 --end-frame 300 [--step 1] [--format bmp]");
     Console.WriteLine("                   Run a ROM once and export a numbered frame sequence.");
-    Console.WriteLine("  compare-frame <rom.nes> --reference frame.ppm|frame.bmp [--frames 1] [--input \"60-90:Start\"] [--diff-out diff.bmp] [--normalize-palette] [--actual-x-offset N] [--actual-y-offset N] [--offset-radius N]");
+    Console.WriteLine("  compare-frame <rom.nes> --reference frame.ppm|frame.bmp [--frames 1] [--input \"60-90:Start\"] [--diff-out diff.bmp] [--normalize-palette] [--actual-x-offset N] [--actual-y-offset N] [--offset-radius N] [--hotspots N]");
     Console.WriteLine("                   Compare nesSharp RGB output against a 256x240 reference frame, optionally writing a visual diff.");
     Console.WriteLine("  scan-frame-match <rom.nes> --reference frame.ppm|frame.bmp --start-frame 1 --end-frame 300");
     Console.WriteLine("                   Compare a reference against each frame in a nesSharp frame range.");
@@ -185,7 +185,7 @@ static int CompareFrame(string[] args)
 {
     if (args.Length < 2)
     {
-        Console.Error.WriteLine("Usage: NesSharp.Cli compare-frame <rom.nes> --reference frame.ppm|frame.bmp [--frames 1] [--out actual.ppm|actual.bmp] [--diff-out diff.ppm|diff.bmp] [--input \"60-90:Start\"] [--normalize-palette] [--actual-x-offset N] [--actual-y-offset N] [--offset-radius N] [--max-instructions 50000000]");
+        Console.Error.WriteLine("Usage: NesSharp.Cli compare-frame <rom.nes> --reference frame.ppm|frame.bmp [--frames 1] [--out actual.ppm|actual.bmp] [--diff-out diff.ppm|diff.bmp] [--input \"60-90:Start\"] [--normalize-palette] [--actual-x-offset N] [--actual-y-offset N] [--offset-radius N] [--hotspots N] [--max-instructions 50000000]");
         return 1;
     }
 
@@ -207,9 +207,16 @@ static int CompareFrame(string[] args)
     var actualXOffset = GetIntOption(args, "--actual-x-offset", 0);
     var actualYOffset = GetIntOption(args, "--actual-y-offset", 0);
     var offsetRadius = GetIntOption(args, "--offset-radius", 0);
+    var hotspotCount = GetIntOption(args, "--hotspots", 0);
     if (offsetRadius < 0)
     {
         Console.Error.WriteLine("--offset-radius must be 0 or greater.");
+        return 1;
+    }
+
+    if (hotspotCount < 0)
+    {
+        Console.Error.WriteLine("--hotspots must be 0 or greater.");
         return 1;
     }
 
@@ -258,6 +265,15 @@ static int CompareFrame(string[] args)
 
     Console.WriteLine($"Max channel delta: {diff.MaxChannelDelta}");
     Console.WriteLine($"Total absolute channel delta: {diff.TotalAbsoluteChannelDelta}");
+    if (hotspotCount > 0)
+    {
+        Console.WriteLine("Diff hotspots (16x16 cells):");
+        foreach (var hotspot in FrameDiff.CalculateHotspots(actualRgb, expectedRgb, actualXOffset, actualYOffset, cellSize: 16, maxResults: hotspotCount))
+        {
+            Console.WriteLine(
+                $"{hotspot.X},{hotspot.Y}..{hotspot.MaxX},{hotspot.MaxY}: differing={hotspot.DifferingPixels}/{hotspot.ComparedPixels}, max_delta={hotspot.MaxChannelDelta}, total_abs={hotspot.TotalAbsoluteChannelDelta}");
+        }
+    }
 
     return diff.DifferingPixels == 0 ? 0 : 2;
 }
@@ -2267,6 +2283,74 @@ internal static class FrameDiff
         return new FrameOffsetSearchResult(bestDx, bestDy, bestDifferingPixels, bestComparedPixels);
     }
 
+    public static IReadOnlyList<FrameDiffHotspot> CalculateHotspots(
+        ReadOnlySpan<byte> actualRgb,
+        ReadOnlySpan<byte> expectedRgb,
+        int actualXOffset,
+        int actualYOffset,
+        int cellSize,
+        int maxResults)
+    {
+        if (actualRgb.Length != expectedRgb.Length)
+        {
+            throw new InvalidDataException($"Frame payload lengths differ: actual {actualRgb.Length}, expected {expectedRgb.Length}.");
+        }
+
+        if (cellSize <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(cellSize), "Cell size must be greater than zero.");
+        }
+
+        if (maxResults <= 0)
+        {
+            return [];
+        }
+
+        var columns = (256 + cellSize - 1) / cellSize;
+        var rows = (240 + cellSize - 1) / cellSize;
+        var builders = new FrameDiffHotspotBuilder[columns * rows];
+        for (var row = 0; row < rows; row++)
+        {
+            for (var column = 0; column < columns; column++)
+            {
+                var x = column * cellSize;
+                var y = row * cellSize;
+                builders[row * columns + column] = new FrameDiffHotspotBuilder(
+                    x,
+                    y,
+                    Math.Min(255, x + cellSize - 1),
+                    Math.Min(239, y + cellSize - 1));
+            }
+        }
+
+        var xStart = Math.Max(0, actualXOffset);
+        var yStart = Math.Max(0, actualYOffset);
+        var xEnd = Math.Min(256, 256 + actualXOffset);
+        var yEnd = Math.Min(240, 240 + actualYOffset);
+
+        for (var y = yStart; y < yEnd; y++)
+        {
+            for (var x = xStart; x < xEnd; x++)
+            {
+                var actualIndex = (((y - actualYOffset) * 256) + (x - actualXOffset)) * 3;
+                var expectedIndex = ((y * 256) + x) * 3;
+                var redDelta = Math.Abs(actualRgb[actualIndex] - expectedRgb[expectedIndex]);
+                var greenDelta = Math.Abs(actualRgb[actualIndex + 1] - expectedRgb[expectedIndex + 1]);
+                var blueDelta = Math.Abs(actualRgb[actualIndex + 2] - expectedRgb[expectedIndex + 2]);
+                var builderIndex = (y / cellSize * columns) + (x / cellSize);
+                builders[builderIndex].Add(redDelta, greenDelta, blueDelta);
+            }
+        }
+
+        return builders
+            .Select(static builder => builder.ToHotspot())
+            .Where(static hotspot => hotspot.DifferingPixels > 0)
+            .OrderByDescending(static hotspot => hotspot.TotalAbsoluteChannelDelta)
+            .ThenByDescending(static hotspot => hotspot.DifferingPixels)
+            .Take(maxResults)
+            .ToArray();
+    }
+
     private static byte ChannelDiff(byte actual, byte expected)
     {
         var delta = Math.Abs(actual - expected);
@@ -2408,6 +2492,49 @@ internal readonly record struct FrameOffsetSearchResult(
     int Dy,
     int DifferingPixels,
     int ComparedPixels);
+
+internal readonly record struct FrameDiffHotspot(
+    int X,
+    int Y,
+    int MaxX,
+    int MaxY,
+    int DifferingPixels,
+    int ComparedPixels,
+    int MaxChannelDelta,
+    long TotalAbsoluteChannelDelta);
+
+internal struct FrameDiffHotspotBuilder(int x, int y, int maxX, int maxY)
+{
+    private int differingPixels;
+    private int comparedPixels;
+    private int maxChannelDelta;
+    private long totalAbsoluteChannelDelta;
+
+    public void Add(int redDelta, int greenDelta, int blueDelta)
+    {
+        comparedPixels++;
+        if (redDelta != 0 || greenDelta != 0 || blueDelta != 0)
+        {
+            differingPixels++;
+        }
+
+        maxChannelDelta = Math.Max(maxChannelDelta, Math.Max(redDelta, Math.Max(greenDelta, blueDelta)));
+        totalAbsoluteChannelDelta += redDelta + greenDelta + blueDelta;
+    }
+
+    public readonly FrameDiffHotspot ToHotspot()
+    {
+        return new FrameDiffHotspot(
+            x,
+            y,
+            maxX,
+            maxY,
+            differingPixels,
+            comparedPixels,
+            maxChannelDelta,
+            totalAbsoluteChannelDelta);
+    }
+}
 
 internal readonly record struct SchedulerShadowCandidate(
     string StartSource,

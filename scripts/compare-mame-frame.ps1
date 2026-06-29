@@ -27,6 +27,8 @@ param(
 
     [int]$ActualYOffset = 0,
 
+    [int]$Hotspots = 0,
+
     [switch]$ExactRgb,
 
     [switch]$NoBuild
@@ -44,6 +46,10 @@ if ($ScanRadius -lt 0) {
 
 if ($OffsetRadius -lt 0) {
     throw "OffsetRadius must be 0 or greater."
+}
+
+if ($Hotspots -lt 0) {
+    throw "Hotspots must be 0 or greater."
 }
 
 $resolvedRomPath = Resolve-Path -LiteralPath $RomPath
@@ -116,6 +122,11 @@ if ($ActualXOffset -ne 0) {
 if ($ActualYOffset -ne 0) {
     $compareArgs.Add("--actual-y-offset")
     $compareArgs.Add($ActualYOffset.ToString([System.Globalization.CultureInfo]::InvariantCulture))
+}
+
+if ($Hotspots -gt 0) {
+    $compareArgs.Add("--hotspots")
+    $compareArgs.Add($Hotspots.ToString([System.Globalization.CultureInfo]::InvariantCulture))
 }
 
 if (-not $ExactRgb) {
