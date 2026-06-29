@@ -1,9 +1,9 @@
 # Compatibility Dashboard
 
-Generated: 2026-06-28 19:43:09 -04:00
+Generated: 2026-06-29 01:45:12 -04:00
 
 - Branch: `main`
-- Commit: `c97442e`
+- Commit: `15927f3`
 - Configuration: `Release`
 - Slow checks: `False`
 
@@ -26,9 +26,10 @@ Generated: 2026-06-28 19:43:09 -04:00
 
 | Check | Status | Time | Command |
 | --- | --- | ---: | --- |
-| DMA/APU focused tests | pass | 15s | `dotnet test tests\NesSharp.Tests\NesSharp.Tests.csproj --filter ApuBusTests\|CpuBusTests\|OamDmcDmaTimingTests\|DmcDmaDuringReadRomTests\|SprDmaOutputParserExtractsRowsAndScoresDiffs --logger console;verbosity=minimal` |
-| sprdma normal | pass | 19.9s | `dotnet run -c Release --no-build --project src\NesSharp.Cli -- sprdma-report test-roms\nes-test-roms\sprdma_and_dmc_dma\sprdma_and_dmc_dma.nes` |
-| sprdma 512 | pass | 19.9s | `dotnet run -c Release --no-build --project src\NesSharp.Cli -- sprdma-report test-roms\nes-test-roms\sprdma_and_dmc_dma\sprdma_and_dmc_dma_512.nes` |
+| Release build | pass | 2.6s | `dotnet build src\NesSharp.Cli\NesSharp.Cli.csproj -c Release` |
+| DMA/APU focused tests | pass | 5.5s | `dotnet test tests\NesSharp.Tests\NesSharp.Tests.csproj --filter ApuBusTests\|CpuBusTests\|OamDmcDmaTimingTests\|DmcDmaDuringReadRomTests\|SprDmaOutputParserExtractsRowsAndScoresDiffs --logger console;verbosity=minimal` |
+| sprdma normal | pass | 6.1s | `dotnet run -c Release --no-build --project src\NesSharp.Cli -- sprdma-report test-roms\nes-test-roms\sprdma_and_dmc_dma\sprdma_and_dmc_dma.nes` |
+| sprdma 512 | pass | 5.3s | `dotnet run -c Release --no-build --project src\NesSharp.Cli -- sprdma-report test-roms\nes-test-roms\sprdma_and_dmc_dma\sprdma_and_dmc_dma_512.nes` |
 
 ## Next Debugging Targets
 
