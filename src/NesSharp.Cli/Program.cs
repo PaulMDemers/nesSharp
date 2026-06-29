@@ -949,6 +949,20 @@ static void TrackStatusWrite(SprDmaTraceRow? row, CpuBusWriteDebugEntry entry, u
     }
 
     row.StatusWrites++;
+    if (row.FirstStatusWriteValue is null)
+    {
+        row.FirstStatusWriteValue = entry.Value;
+        row.FirstStatusWritePc = pc;
+        row.FirstStatusWriteState = FormatDmcWriteState(entry);
+    }
+
+    if (entry.Value == 0x1F && row.FirstStatusRestartWriteValue is null)
+    {
+        row.FirstStatusRestartWriteValue = entry.Value;
+        row.FirstStatusRestartWritePc = pc;
+        row.FirstStatusRestartWriteState = FormatDmcWriteState(entry);
+    }
+
     row.LastStatusWriteValue = entry.Value;
     row.LastStatusWritePc = pc;
     row.LastStatusWriteState = FormatDmcWriteState(entry);
@@ -1012,12 +1026,25 @@ static string FormatDmcWriteState(CpuBusWriteDebugEntry entry)
 
 static string FormatStatusWrite(SprDmaTraceRow? row)
 {
-    if (row?.LastStatusWriteValue is null || row.LastStatusWritePc is null)
+    if (row is null)
     {
         return "-";
     }
 
-    return $"{row.LastStatusWritePc.Value:X4}:${row.LastStatusWriteValue.Value:X2}:{row.LastStatusWriteState ?? "-"}";
+    var first = FormatStatusWriteSnapshot(row.FirstStatusWritePc, row.FirstStatusWriteValue, row.FirstStatusWriteState);
+    var restart = FormatStatusWriteSnapshot(row.FirstStatusRestartWritePc, row.FirstStatusRestartWriteValue, row.FirstStatusRestartWriteState);
+    var last = FormatStatusWriteSnapshot(row.LastStatusWritePc, row.LastStatusWriteValue, row.LastStatusWriteState);
+    return $"{first}/{restart}/{last}";
+}
+
+static string FormatStatusWriteSnapshot(ushort? pc, byte? value, string? state)
+{
+    if (pc is null || value is null)
+    {
+        return "-";
+    }
+
+    return $"{pc.Value:X4}:${value.Value:X2}:{state ?? "-"}";
 }
 
 static string FormatNullableHex(ushort? value) => value?.ToString("X4", CultureInfo.InvariantCulture) ?? "-";
@@ -2470,6 +2497,18 @@ internal sealed class SprDmaTraceRow(int row)
     public string? FirstStatusDmcActiveState { get; set; }
 
     public string? FirstStatusDmcInactiveState { get; set; }
+
+    public ushort? FirstStatusWritePc { get; set; }
+
+    public byte? FirstStatusWriteValue { get; set; }
+
+    public string? FirstStatusWriteState { get; set; }
+
+    public ushort? FirstStatusRestartWritePc { get; set; }
+
+    public byte? FirstStatusRestartWriteValue { get; set; }
+
+    public string? FirstStatusRestartWriteState { get; set; }
 
     public ushort? LastStatusWritePc { get; set; }
 
