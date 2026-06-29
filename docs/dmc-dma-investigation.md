@@ -380,3 +380,5 @@ The status-read/write snapshots now show that both ROMs usually perform the fina
 After adding first-write snapshots, the phase split is already visible at the first post-row `$4015=$1F` restart write (`E282`): normal focused rows are around `t332/t333`, while `_512` rows are around `t329-t331`. The later active/inactive `$4015` read difference is therefore inherited from the row's accumulated DMC phase before the sync loop, not created solely by status polling.
 
 A recheck of the late OAM index-255 no-final-realignment rule still worsened `_512`: rows 06-0F moved to `525, 526, 529, 530, 527, 529, 527, 527, 528, 529` for an absolute filtered error of 12. Keep index 255 on the normal trailing-cycle path.
+
+A broad write-overlap probe that allowed ready DMC DMA to overlap any absolute write, including the measured routine's following `STA $0100`, also worsened `_512` to `abs=12` and introduced extra post-OAM `dmc-write-overlap` events in rows 0C-0D. Keep the current exact `$4014` write-overlap rule until a narrower hardware condition is identified.
