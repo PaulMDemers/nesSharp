@@ -799,7 +799,7 @@ static int ReportSprDma(string[] args)
     var actual = ParseSprDmaTimingRows(output);
     var expected = IsSprDma512(args[1]) ? SprDmaReportData.Expected512 : SprDmaReportData.ExpectedNormal;
 
-    Console.WriteLine("row actual expected diff start/access pending/ready retry/delay setup-p/r first-p/r dmc-index/access sched-ready(H/D/R)|obs sched-pend(H/D/R) sched-best dmc-kind pre-dmc post-dmc oam-end end-p/r/k/t/b/bytes/d status-r/w status10/0 stat-first/end stat-pc stat-dmc write");
+    Console.WriteLine("row actual expected diff start/access pending/ready retry/delay setup-p/r first-p/r dmc-index/access sched-ready(H/D/R)|obs sched-pend(H/D/R) sched-best dmc-kind pre-dmc post-dmc oam-end end-p/r/k/t/b/bytes/d status-r/w status10/0 stat-first/end stat-span stat-pc stat-dmc write");
     var absoluteDiffTotal = 0;
     var maxAbsoluteDiff = 0;
     for (var i = 0; i < Math.Min(16, Math.Max(actual.Length, rows.Count)); i++)
@@ -845,12 +845,13 @@ static int ReportSprDma(string[] args)
         var statusReadWrite = row is null ? "-" : $"{row.StatusReads}/{row.StatusWrites}";
         var statusValues = row is null ? "-" : $"{row.StatusDmcActiveReads}/{row.StatusDmcInactiveReads}";
         var statusFirstText = FormatStatusFirsts(row);
+        var statusSpanText = FormatStatusRestartPollSpans(row);
         var statusPcText = FormatStatusPcs(row);
         var statusDmcText = FormatStatusDmcState(row);
         var statusWriteText = FormatStatusWrite(row);
 
         Console.WriteLine(
-            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,12} {pendingText,13} {retryText,17} {setupText,9} {firstText,9} {dmcText,16} {schedulerText,34} {pendingSchedulerText,26} {bestSchedulerText,14} {kindText,-26} {preDmcText,20} {postDmcText,20} {oamEndText,7} {oamEndDmcText,9} {statusReadWrite,10} {statusValues,10} {statusFirstText,14} {statusPcText,9} {statusDmcText,23} {statusWriteText,12}");
+            $"{i:X2} {actualText,6} {expectedText,8} {diffText,4} {startText,12} {pendingText,13} {retryText,17} {setupText,9} {firstText,9} {dmcText,16} {schedulerText,34} {pendingSchedulerText,26} {bestSchedulerText,14} {kindText,-26} {preDmcText,20} {postDmcText,20} {oamEndText,7} {oamEndDmcText,9} {statusReadWrite,10} {statusValues,10} {statusFirstText,14} {statusSpanText,11} {statusPcText,9} {statusDmcText,23} {statusWriteText,12}");
     }
 
     Console.WriteLine($"Diff score: abs={absoluteDiffTotal} max={maxAbsoluteDiff}");
@@ -953,6 +954,7 @@ static void TrackStatusWrite(SprDmaTraceRow? row, CpuBusWriteDebugEntry entry, u
     {
         row.FirstStatusWriteValue = entry.Value;
         row.FirstStatusWritePc = pc;
+        row.FirstStatusWriteTotalAccess = entry.TotalCpuAccessCycles;
         row.FirstStatusWriteState = FormatDmcWriteState(entry);
     }
 
@@ -960,11 +962,13 @@ static void TrackStatusWrite(SprDmaTraceRow? row, CpuBusWriteDebugEntry entry, u
     {
         row.FirstStatusRestartWriteValue = entry.Value;
         row.FirstStatusRestartWritePc = pc;
+        row.FirstStatusRestartWriteTotalAccess = entry.TotalCpuAccessCycles;
         row.FirstStatusRestartWriteState = FormatDmcWriteState(entry);
     }
 
     row.LastStatusWriteValue = entry.Value;
     row.LastStatusWritePc = pc;
+    row.LastStatusWriteTotalAccess = entry.TotalCpuAccessCycles;
     row.LastStatusWriteState = FormatDmcWriteState(entry);
 }
 
@@ -998,6 +1002,28 @@ static string FormatStatusPcs(SprDmaTraceRow? row)
     }
 
     return $"{FormatNullableHex(row.FirstStatusDmcActivePc)}/{FormatNullableHex(row.FirstStatusDmcInactivePc)}";
+}
+
+static string FormatStatusRestartPollSpans(SprDmaTraceRow? row)
+{
+    if (row?.FirstStatusRestartWriteTotalAccess is null)
+    {
+        return "-";
+    }
+
+    var active = FormatStatusRestartPollSpan(row, row.FirstStatusDmcActiveTotalAccess);
+    var inactive = FormatStatusRestartPollSpan(row, row.FirstStatusDmcInactiveTotalAccess);
+    return $"{active}/{inactive}";
+}
+
+static string FormatStatusRestartPollSpan(SprDmaTraceRow row, ulong? pollAccess)
+{
+    if (pollAccess is null || row.FirstStatusRestartWriteTotalAccess is null)
+    {
+        return "-";
+    }
+
+    return SignedDifference(pollAccess.Value, row.FirstStatusRestartWriteTotalAccess.Value).ToString(CultureInfo.InvariantCulture);
 }
 
 static string FormatStatusDmcState(SprDmaTraceRow? row)
@@ -2502,17 +2528,23 @@ internal sealed class SprDmaTraceRow(int row)
 
     public byte? FirstStatusWriteValue { get; set; }
 
+    public ulong? FirstStatusWriteTotalAccess { get; set; }
+
     public string? FirstStatusWriteState { get; set; }
 
     public ushort? FirstStatusRestartWritePc { get; set; }
 
     public byte? FirstStatusRestartWriteValue { get; set; }
 
+    public ulong? FirstStatusRestartWriteTotalAccess { get; set; }
+
     public string? FirstStatusRestartWriteState { get; set; }
 
     public ushort? LastStatusWritePc { get; set; }
 
     public byte? LastStatusWriteValue { get; set; }
+
+    public ulong? LastStatusWriteTotalAccess { get; set; }
 
     public string? LastStatusWriteState { get; set; }
 }
