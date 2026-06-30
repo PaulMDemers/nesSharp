@@ -163,9 +163,9 @@ try {
     $lines.Add("")
     $lines.Add("| Case | Frame/Input | Current | Artifacts | Notes |")
     $lines.Add("| --- | --- | ---: | --- | --- |")
-    $lines.Add("| Super Mario Bros. 3 overworld smoke | frame 420, ``60-90:Start;180-240:Start;260-420:Right+B`` | 1519 / 60960 differing pixels after ``dx=2`` | ``artifacts\frame-compare\Super_Mario_Bros_3_U_PRG_1_-frame420-*`` | Residual diff is mostly animated overworld star markers and thin edge artifacts. |")
-    $lines.Add("| Super Mario Bros. 3 level 1-1 smoke | frame 1000, ``60-90:Start;180-240:Start;420-470:Right;540-590:Up;700-750:A;920-1500:Right+B`` | 458 / 60960 differing pixels after ``dx=2`` | ``artifacts\frame-compare\Super_Mario_Bros_3_U_PRG_1_-frame1000-*`` | In-level HUD and gameplay field are structurally close; residual diff is mostly Mario/enemy animation and a thin edge/HUD boundary. |")
-    $lines.Add("| Super Mario Bros. 3 later overworld route | frame 2200, ``60-90:Start;180-240:Start;420-470:Right;540-590:Up;700-750:A;920-2200:Right+B`` | 1029 / 60960 differing pixels after ``dx=2`` | ``artifacts\frame-compare\Super_Mario_Bros_3_U_PRG_1_-frame2200-*`` | Overworld map and HUD remain structurally aligned; residual diff is mostly character/enemy animation timing. |")
+    $lines.Add("| Super Mario Bros. 3 overworld smoke | frame 420, ``60-90:Start;180-240:Start;260-420:Right+B`` | 0 / 61440 differing pixels | ``artifacts\frame-compare\Super_Mario_Bros_3_U_PRG_1_-frame420-*`` | Zero-offset match after background shifter phase correction. |")
+    $lines.Add("| Super Mario Bros. 3 level 1-1 smoke | frame 1000, ``60-90:Start;180-240:Start;420-470:Right;540-590:Up;700-750:A;920-1500:Right+B`` | 16 / 61440 differing pixels | ``artifacts\frame-compare\Super_Mario_Bros_3_U_PRG_1_-frame1000-*`` | Tiny edge-only residual; gameplay field and HUD are structurally aligned. |")
+    $lines.Add("| Super Mario Bros. 3 later overworld route | frame 2200, ``60-90:Start;180-240:Start;420-470:Right;540-590:Up;700-750:A;920-2200:Right+B`` | 0 / 61440 differing pixels | ``artifacts\frame-compare\Super_Mario_Bros_3_U_PRG_1_-frame2200-*`` | Zero-offset match after background shifter phase correction. |")
     $lines.Add("")
     $lines.Add("## Command Results")
     $lines.Add("")
@@ -183,7 +183,7 @@ try {
     $lines.Add("- Add any newly failing retail smoke cases here with frame number, input script, and artifact paths.")
     $lines.Add("")
 
-    Set-Content -LiteralPath $outputPath -Value $lines -Encoding ASCII
+    [System.IO.File]::WriteAllText($outputPath, (($lines -join "`n") + "`n"), [System.Text.Encoding]::ASCII)
     Write-Output "Wrote $outputPath"
 }
 finally {

@@ -55,9 +55,9 @@ public sealed class PpuBackgroundRenderingTests
 
         ppu.Clock(7);
         WritePatternRow(ppu, tile: 1, row: 0, low: 0x00, high: 0x00);
-        ppu.Clock(1);
+        ppu.Clock(3);
 
-        Assert.Equal(0x22, ppu.Framebuffer[15]);
+        Assert.Equal(0x22, ppu.Framebuffer[17]);
     }
 
     [Fact]
@@ -71,10 +71,10 @@ public sealed class PpuBackgroundRenderingTests
         ppu.Clock(8);
         SetVramAddress(ppu, 0x0001);
 
-        ppu.Clock(8);
+        ppu.Clock(10);
 
-        Assert.Equal(0x00, ppu.Framebuffer[14]);
-        Assert.Equal(0x22, ppu.Framebuffer[15]);
+        Assert.Equal(0x00, ppu.Framebuffer[16]);
+        Assert.Equal(0x22, ppu.Framebuffer[17]);
     }
 
     [Fact]
@@ -88,10 +88,10 @@ public sealed class PpuBackgroundRenderingTests
         ppu.Clock(8);
         SetVramAddress(ppu, 0x0001);
 
-        ppu.Clock(8);
+        ppu.Clock(10);
 
-        Assert.Equal(0x00, ppu.Framebuffer[14]);
-        Assert.Equal(0x27, ppu.Framebuffer[15]);
+        Assert.Equal(0x00, ppu.Framebuffer[16]);
+        Assert.Equal(0x27, ppu.Framebuffer[17]);
     }
 
     [Fact]
@@ -107,10 +107,10 @@ public sealed class PpuBackgroundRenderingTests
         ppu.Clock(8);
         SetVramAddress(ppu, 0x0001);
 
-        ppu.Clock(23);
+        ppu.Clock(25);
 
-        Assert.Equal(0x00, ppu.Framebuffer[22]);
-        Assert.Equal(0x22, ppu.Framebuffer[30]);
+        Assert.Equal(0x00, ppu.Framebuffer[24]);
+        Assert.Equal(0x22, ppu.Framebuffer[32]);
     }
 
     [Fact]
@@ -127,9 +127,9 @@ public sealed class PpuBackgroundRenderingTests
         ppu.Clock(8);
         SetVramAddress(ppu, 0x0001);
 
-        ppu.Clock(23);
+        ppu.Clock(25);
 
-        Assert.Equal(0x25, ppu.Framebuffer[30]);
+        Assert.Equal(0x25, ppu.Framebuffer[32]);
     }
 
     [Fact]
@@ -158,9 +158,9 @@ public sealed class PpuBackgroundRenderingTests
 
         ppu.Clock(7);
         WritePatternRow(ppu, tile: 1, row: 0, low: 0x00, high: 0x00);
-        ppu.Clock(1);
+        ppu.Clock(3);
 
-        Assert.Equal(0x22, ppu.Framebuffer[15]);
+        Assert.Equal(0x22, ppu.Framebuffer[17]);
     }
 
     private static PpuBus CreatePpu() => new(CreateCartridge());

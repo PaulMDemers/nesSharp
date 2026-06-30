@@ -47,6 +47,8 @@ public sealed class PpuBus
     private bool writeToggle;
     private bool renderBackgroundFromCurrentVramAddress;
     private BackgroundFetchPipeline backgroundFetchPipeline;
+    private BackgroundFetchPipeline pendingBackgroundShiftLoad;
+    private int pendingBackgroundShiftLoadDelay;
     private BackgroundShiftRegister backgroundShiftRegister;
     private int scanlineSpriteY = -1;
     private int scanlineSpriteCount;
@@ -256,6 +258,8 @@ public sealed class PpuBus
         writeToggle = false;
         renderBackgroundFromCurrentVramAddress = false;
         backgroundFetchPipeline = default;
+        pendingBackgroundShiftLoad = default;
+        pendingBackgroundShiftLoadDelay = 0;
         backgroundShiftRegister = default;
         scanlineSpriteY = -1;
         scanlineSpriteCount = 0;
@@ -323,6 +327,7 @@ public sealed class PpuBus
             RunSpritePatternFetchStep();
             RenderCurrentPixel();
             ShiftBackgroundRegisters();
+            ApplyPendingBackgroundShiftRegisterLoad();
             EvaluateSpriteZeroHit();
             UpdateRenderingVramAddress();
             TickMaskDelay();
@@ -391,9 +396,27 @@ public sealed class PpuBus
                 {
                     PatternHigh = FetchBackgroundPatternHigh(backgroundFetchPipeline.PatternAddress)
                 };
-                LoadBackgroundShiftRegister();
+                pendingBackgroundShiftLoad = backgroundFetchPipeline;
+                pendingBackgroundShiftLoadDelay = 2;
                 break;
         }
+    }
+
+    private void ApplyPendingBackgroundShiftRegisterLoad()
+    {
+        if (pendingBackgroundShiftLoadDelay <= 0)
+        {
+            return;
+        }
+
+        pendingBackgroundShiftLoadDelay--;
+        if (pendingBackgroundShiftLoadDelay > 0)
+        {
+            return;
+        }
+
+        LoadBackgroundShiftRegister(pendingBackgroundShiftLoad);
+        pendingBackgroundShiftLoad = default;
     }
 
     private void RunSpritePatternFetchStep()
@@ -424,18 +447,18 @@ public sealed class PpuBus
         }
     }
 
-    private void LoadBackgroundShiftRegister()
+    private void LoadBackgroundShiftRegister(BackgroundFetchPipeline fetch)
     {
         if (!backgroundShiftRegister.IsValid)
         {
             backgroundShiftRegister = new BackgroundShiftRegister(
                 true,
-                backgroundFetchPipeline.RenderAddress,
+                fetch.RenderAddress,
                 NextRenderAddress: 0,
-                PatternLow: (ushort)(backgroundFetchPipeline.PatternLow << 8),
-                PatternHigh: (ushort)(backgroundFetchPipeline.PatternHigh << 8),
-                AttributeLow: GetAttributeShiftPlane(backgroundFetchPipeline.AttributePalette, 0, highByte: true),
-                AttributeHigh: GetAttributeShiftPlane(backgroundFetchPipeline.AttributePalette, 1, highByte: true),
+                PatternLow: (ushort)(fetch.PatternLow << 8),
+                PatternHigh: (ushort)(fetch.PatternHigh << 8),
+                AttributeLow: GetAttributeShiftPlane(fetch.AttributePalette, 0, highByte: true),
+                AttributeHigh: GetAttributeShiftPlane(fetch.AttributePalette, 1, highByte: true),
                 NextTileShifts: 0,
                 HasNextTile: false);
             return;
@@ -443,13 +466,13 @@ public sealed class PpuBus
 
         backgroundShiftRegister = backgroundShiftRegister with
         {
-            NextRenderAddress = backgroundFetchPipeline.RenderAddress,
-            PatternLow = (ushort)((backgroundShiftRegister.PatternLow & 0xFF00) | backgroundFetchPipeline.PatternLow),
-            PatternHigh = (ushort)((backgroundShiftRegister.PatternHigh & 0xFF00) | backgroundFetchPipeline.PatternHigh),
+            NextRenderAddress = fetch.RenderAddress,
+            PatternLow = (ushort)((backgroundShiftRegister.PatternLow & 0xFF00) | fetch.PatternLow),
+            PatternHigh = (ushort)((backgroundShiftRegister.PatternHigh & 0xFF00) | fetch.PatternHigh),
             AttributeLow = (ushort)((backgroundShiftRegister.AttributeLow & 0xFF00) |
-                GetAttributeShiftPlane(backgroundFetchPipeline.AttributePalette, 0, highByte: false)),
+                GetAttributeShiftPlane(fetch.AttributePalette, 0, highByte: false)),
             AttributeHigh = (ushort)((backgroundShiftRegister.AttributeHigh & 0xFF00) |
-                GetAttributeShiftPlane(backgroundFetchPipeline.AttributePalette, 1, highByte: false)),
+                GetAttributeShiftPlane(fetch.AttributePalette, 1, highByte: false)),
             NextTileShifts = 0,
             HasNextTile = true
         };

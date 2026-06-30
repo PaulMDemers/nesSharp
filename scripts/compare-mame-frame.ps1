@@ -23,7 +23,7 @@ param(
 
     [int]$OffsetRadius = 8,
 
-    [int]$ActualXOffset = 2,
+    [int]$ActualXOffset = 0,
 
     [int]$ActualYOffset = 0,
 
