@@ -389,6 +389,8 @@ Disabling the CPU-side reload get-phase retry gate was also rejected. It made th
 
 The CLI now supports `sprdma-report --summary`, which prints only `row actual expected diff` plus the score. This is the preferred first check for timing probes; use the default full report only after the compact table shows a real improvement.
 
+Standalone CPU-side DMC fetches now flow through `DmcDmaCpuSequencer` as explicit `Halt`, `Dummy`, optional `Alignment`, and `Get` phases. This preserved the current row scores (`abs=6` and `abs=11`) while moving the timing vocabulary out of ad hoc clock bursts in `CpuBus`.
+
 Three additional probes were rejected after the SMB3 background phase work:
 
 - Making reload sample fetches ready immediately kept the normal ROM at `abs=6` but worsened `_512` to `abs=12`.

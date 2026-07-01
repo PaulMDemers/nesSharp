@@ -336,23 +336,22 @@ public sealed class CpuBus
 
         var address = ApuBus.PendingDmcDmaAddress;
         var repeatedReadCount = 0;
-        ClockCpuAccess(instructionAccess: false);
-        repeatedReadCount++;
-        ClockCpuAccess(instructionAccess: false);
-        repeatedReadCount++;
-        if (!nextDmaCycleIsGet)
+        foreach (var phase in DmcDmaCpuSequencer.StandaloneFetch(nextDmaCycleIsGet))
         {
             ClockCpuAccess(instructionAccess: false);
+            if (phase == DmcDmaCpuPhase.Get)
+            {
+                ApplyDmcReadConflict(haltedReadAddress, repeatedReadCount);
+                var value = ReadRaw(address);
+                ApuBus.CompleteDmcDma(value);
+                ObserveDma("dmc", address, value, repeatedReadCount);
+                dmcDmaHaltRetry = false;
+                dmcLoadDmaHaltDelayCycles = 0;
+                return;
+            }
+
             repeatedReadCount++;
         }
-
-        ClockCpuAccess(instructionAccess: false);
-        ApplyDmcReadConflict(haltedReadAddress, repeatedReadCount);
-        var value = ReadRaw(address);
-        ApuBus.CompleteDmcDma(value);
-        ObserveDma("dmc", address, value, repeatedReadCount);
-        dmcDmaHaltRetry = false;
-        dmcLoadDmaHaltDelayCycles = 0;
     }
 
     private void RunPendingDmcDmaDuringWrite(ushort writeAddress)
