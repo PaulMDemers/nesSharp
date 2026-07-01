@@ -386,3 +386,11 @@ A broad write-overlap probe that allowed ready DMC DMA to overlap any absolute w
 The `sprdma-report` status diagnostics now include restart-to-poll spans (`stat-span`) for the first active and inactive `$4015` reads after the row restart write. The span evidence rules out a simple "status poll loop is one cycle short/long" fix: normal-ROM low rows can have the same `23/2183` span as passing rows, while `_512` rows 08, 09, and 0B share the shorter `23/2169` inactive span but row 0A still runs high with the normal `22/2182` span. The remaining error is still upstream of, or interleaved with, the post-row DMC restart/poll phase rather than isolated to the poll loop itself.
 
 Disabling the CPU-side reload get-phase retry gate was also rejected. It made the normal ROM jump to `abs=66 max=5` and `_512` to `abs=820 max=257`, with several `_512` rows measuring `783` cycles. The current retry gate is necessary for the DMC synchronization loops; any future change there needs to be conditional on a narrower state than "reload ready on a get phase."
+
+The CLI now supports `sprdma-report --summary`, which prints only `row actual expected diff` plus the score. This is the preferred first check for timing probes; use the default full report only after the compact table shows a real improvement.
+
+Three additional probes were rejected after the SMB3 background phase work:
+
+- Making reload sample fetches ready immediately kept the normal ROM at `abs=6` but worsened `_512` to `abs=12`.
+- Moving `Dmc.ClockDmaDelay()` after channel timer clocks produced the same bad signature, so the readiness side of the APU timer tick is not the current fix.
+- Tightening the CPU-side reload get-phase retry gate to only rate `$0F` was catastrophic, producing multiple `783`-cycle rows and `abs=805`/`abs=794` scores. The broad `rate $0F or $4015=$1F` gate still needs to remain until a narrower hardware state is modeled.

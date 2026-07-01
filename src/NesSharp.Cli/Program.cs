@@ -105,7 +105,7 @@ static void PrintUsage()
     Console.WriteLine("                   Print PPU register and mapper writes with PPU timing.");
     Console.WriteLine("  trace-dma <rom.nes> [--max-instructions 50000000] [--max-events 200] [--include-status]");
     Console.WriteLine("                   Print OAM/DMC DMA events with current CPU instruction PC.");
-    Console.WriteLine("  sprdma-report <rom.nes> [--max-instructions 20000000] [--rows 00-0F,0A]");
+    Console.WriteLine("  sprdma-report <rom.nes> [--max-instructions 20000000] [--rows 00-0F,0A] [--summary]");
     Console.WriteLine("                   Print compact row timing for sprdma_and_dmc_dma test ROMs.");
 }
 
@@ -672,12 +672,13 @@ static int ReportSprDma(string[] args)
 {
     if (args.Length < 2)
     {
-        Console.Error.WriteLine("Usage: NesSharp.Cli sprdma-report <rom.nes> [--max-instructions 20000000] [--rows 00-0F,0A]");
+        Console.Error.WriteLine("Usage: NesSharp.Cli sprdma-report <rom.nes> [--max-instructions 20000000] [--rows 00-0F,0A] [--summary]");
         return 1;
     }
 
     var maxInstructions = GetLongOption(args, "--max-instructions", 20_000_000);
     var rowFilter = ParseSprDmaRowFilter(GetOption(args, "--rows"));
+    var summaryOnly = HasOption(args, "--summary");
     var machine = NesMachine.LoadFile(args[1]);
     machine.Reset();
     var rows = new List<SprDmaTraceRow>();
@@ -815,7 +816,9 @@ static int ReportSprDma(string[] args)
     var actual = ParseSprDmaTimingRows(output);
     var expected = IsSprDma512(args[1]) ? SprDmaReportData.Expected512 : SprDmaReportData.ExpectedNormal;
 
-    Console.WriteLine("row actual expected diff start/access pending/ready retry/delay setup-p/r first-p/r dmc-index/access sched-ready(H/D/R)|obs sched-pend(H/D/R) sched-best dmc-kind pre-dmc post-dmc oam-end end-p/r/k/t/b/bytes/d status-r/w status10/0 stat-first/end stat-span stat-pc stat-dmc write");
+    Console.WriteLine(summaryOnly
+        ? "row actual expected diff"
+        : "row actual expected diff start/access pending/ready retry/delay setup-p/r first-p/r dmc-index/access sched-ready(H/D/R)|obs sched-pend(H/D/R) sched-best dmc-kind pre-dmc post-dmc oam-end end-p/r/k/t/b/bytes/d status-r/w status10/0 stat-first/end stat-span stat-pc stat-dmc write");
     var absoluteDiffTotal = 0;
     var maxAbsoluteDiff = 0;
     for (var i = 0; i < Math.Min(16, Math.Max(actual.Length, rows.Count)); i++)
@@ -836,6 +839,12 @@ static int ReportSprDma(string[] args)
             var absoluteDiff = Math.Abs(actual[i] - expected[i]);
             absoluteDiffTotal += absoluteDiff;
             maxAbsoluteDiff = Math.Max(maxAbsoluteDiff, absoluteDiff);
+        }
+
+        if (summaryOnly)
+        {
+            Console.WriteLine($"{i:X2} {actualText,6} {expectedText,8} {diffText,4}");
+            continue;
         }
 
         var dmcText = row?.DmcOamIndex is null
