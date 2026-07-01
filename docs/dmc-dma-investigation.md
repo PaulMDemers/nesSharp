@@ -394,3 +394,4 @@ Three additional probes were rejected after the SMB3 background phase work:
 - Making reload sample fetches ready immediately kept the normal ROM at `abs=6` but worsened `_512` to `abs=12`.
 - Moving `Dmc.ClockDmaDelay()` after channel timer clocks produced the same bad signature, so the readiness side of the APU timer tick is not the current fix.
 - Tightening the CPU-side reload get-phase retry gate to only rate `$0F` was catastrophic, producing multiple `783`-cycle rows and `abs=805`/`abs=794` scores. The broad `rate $0F or $4015=$1F` gate still needs to remain until a narrower hardware state is modeled.
+- Clocking the CPU access before applying `$4015` writes produced the same row scores (`abs=6` and `abs=11`), so the remaining drift is not explained by that coarse write-order choice.
