@@ -397,3 +397,4 @@ Three additional probes were rejected after the SMB3 background phase work:
 - Moving `Dmc.ClockDmaDelay()` after channel timer clocks produced the same bad signature, so the readiness side of the APU timer tick is not the current fix.
 - Tightening the CPU-side reload get-phase retry gate to only rate `$0F` was catastrophic, producing multiple `783`-cycle rows and `abs=805`/`abs=794` scores. The broad `rate $0F or $4015=$1F` gate still needs to remain until a narrower hardware state is modeled.
 - Clocking the CPU access before applying `$4015` writes produced the same row scores (`abs=6` and `abs=11`), so the remaining drift is not explained by that coarse write-order choice.
+- Reloading the DMC timer with `TimerPeriod` instead of `TimerPeriod - 1` was wildly wrong, producing `496/751`-cycle rows and `abs=1658`/`abs=876`. Keep the current timer reload.
